@@ -358,16 +358,16 @@ tfoot td{border-top:1px solid var(--rule-strong);border-bottom:0;font-weight:600
   .stat:nth-child(2){border-left:0;padding-left:0}
   .clock{display:none}
 }
-/* Laptop widths: the full nav (10 items, 11 with Issues) needs ~1375px at desktop spacing. Tighten it first,
-   then give it its own row (as on phones) when even the tight version can't fit beside the tools. */
-@media (min-width:761px) and (max-width:1380px){
+/* Laptop widths: the full nav (12 items) needs ~1460px at desktop spacing. Tighten it first, then give it its
+   own row (as on phones) when even the tight version can't fit beside the tools (it needs ~1300px). */
+@media (min-width:761px) and (max-width:1460px){
   .bar .wrap{gap:16px}
   .nav{gap:0}
   .nav a{padding-inline:7px}
   .nav a[aria-current]::after{left:7px;right:7px}
   .bar .r{gap:4px}
 }
-@media (min-width:761px) and (max-width:1270px){
+@media (min-width:761px) and (max-width:1340px){
   .bar .wrap{height:auto;flex-wrap:wrap;row-gap:0;padding-top:12px}
   .nav{order:3;width:calc(100% + 14px);margin:4px -7px 0}
   .nav a{padding-block:12px 13px}

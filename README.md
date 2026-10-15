@@ -6,6 +6,8 @@ Raspberry Pi at home and I use it every day.
 It's a ledger, not a bot. You place your bets yourself and record them here. It never logs in to a bookmaker
 or exchange and it never moves money.
 
+![The dashboard](docs/screenshots/dashboard.png)
+
 ## What it does
 
 - Groups each back bet with its lay bet(s) into a position and works out what you get back whatever happens.
@@ -27,6 +29,16 @@ or exchange and it never moves money.
   from your screenshots, but anything risky waits for you to confirm it.
 - Optional Telegram summary each morning.
 
+Here's a Bet Builder covered with two correct score lays. It works out what you get back in every outcome:
+
+![Outcome table for a Bet Builder with two lays](docs/screenshots/bet-builder-outcomes.png)
+
+And on a phone:
+
+<img src="docs/screenshots/phone.png" width="300" alt="The dashboard on a phone">
+
+(All the screenshots use made-up teams and figures.)
+
 ## Built with
 
 Python 3.11, FastAPI, Jinja and SQLite. There's very little JavaScript and no frontend framework.
@@ -34,6 +46,8 @@ Python 3.11, FastAPI, Jinja and SQLite. There's very little JavaScript and no fr
 ## Running it locally
 
 ```bash
+git clone https://github.com/sbd1017/matched-betting-dashboard.git
+cd matched-betting-dashboard
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 export BETS_DATA_DIR=./var BETS_PORT=8760 BETS_SECURE_COOKIES=0 BETS_PUBLIC_ORIGINS=http://127.0.0.1:8760
@@ -80,6 +94,9 @@ scripts/update.sh
 It backs up your data, pulls the new code, installs anything new and restarts the app. The app upgrades its own
 database when it starts, so your bets, free bets and history all carry over. If anything goes wrong, the backup
 is in `var/backups`.
+
+If you downloaded the zip instead of using `git clone`, the script can't update it. Download the new version,
+copy your `var` folder into it and start it the same way as before.
 
 To hear about new versions, watch the repo on GitHub (Watch, then Custom, then Releases).
 
