@@ -1,94 +1,83 @@
 # Matched Betting Dashboard
 
-A self-hosted dashboard for **matched betting**: it keeps an exact, auditable ledger of the bets, free bets,
-offers and money movements you make yourself, works out what every position will return, and tells you what
-to do next. It runs comfortably on a Raspberry Pi.
+I built this to keep track of my matched betting after a spreadsheet stopped being enough. It runs on a
+Raspberry Pi at home and I use it every day.
 
-It **records** bets; it never places them, never logs in to bookmakers or exchanges, and never moves money.
-
-> This is a personal project shared as-is. It is not financial advice, and you are responsible for following
-> the rules of every bookmaker and exchange you use. Gamble responsibly.
+It's a ledger, not a bot. You place your bets yourself and record them here. It never logs in to a bookmaker
+or exchange and it never moves money.
 
 ## What it does
 
-- **Positions** — back and lay bets grouped as one matched position (qualifiers, SNR/SR free bets, multi-lay
-  "correct score" and Bet Builder hedges), with the result for every outcome worked out on the server.
-- **Calculator and bet plans** — lay stake, liability, qualifying loss and free-bet retention; plans that are
-  validated against the offer terms, the free bet and the exchange's available funds before you place anything;
-  price changes are tracked with your retention thresholds.
-- **Exact accounting** — integer pence, an append-only ledger (entries are superseded, never edited), every
-  change audited. Realised profit only ever comes from settled bets: deposits, withdrawals, temporary funding,
-  free-bet face value and open liability never count as profit.
-- **Exchange balances done properly** — available cash, reserved lay liability and total funds are kept apart,
-  including unmatched orders and partial fills.
-- **Offers and free bets** — one lifecycle per offer (opt-in, deposit, qualifier, reward due, reward received,
-  converting, complete), expected rewards reconciled against the free bets that actually arrive, expiry tracking.
-- **Funding** — temporary funding from a bank (and when it can go back), bankroll contributions and withdrawals.
-- **What should I do now?** — an Operations page and next-actions list: expiring free bets, unhedged bets,
-  finished events to settle, overdue rewards, money that can be returned.
-- **Issues** — an integrity checker that finds inconsistent records and offers named, audited repairs.
-- **Profit, calendar, search, CSV/JSON/iCalendar exports**, light and dark themes, works on a phone.
-- **Optional AI assistant (ChatGPT) integration** — an MCP server with OAuth 2.1 (PKCE) so an assistant can read
-  your records, plan bets and record what you placed from your screenshots, within permission levels you set.
-  New entries and risky corrections wait for your confirmation; the assistant can never approve its own changes.
-- **Optional Telegram** morning digest and alerts.
+- Groups each back bet with its lay bet(s) into a position and works out what you get back whatever happens.
+  That includes free bets and bets with more than one lay, like correct score hedges on a Bet Builder.
+- Lay stake calculator, plus bet plans that get checked against the offer terms, the free bet and how much
+  cash is free on the exchange before you place anything. If the odds move, it shows how much you'd keep.
+- Keeps the books properly. Amounts are stored in pence, ledger entries are never edited (only replaced) and
+  every change is logged. Profit only comes from settled bets, so deposits, withdrawals and free bet values
+  never show up as profit.
+- Splits exchange balances into available cash, money held for open lays, and the total.
+- Follows each offer from sign up to the reward arriving and being used, and warns you before free bets
+  expire.
+- Tracks money borrowed from your bank account and tells you when it's safe to send it back.
+- An Operations page that lists what needs doing next, and an Issues page that spots records that don't
+  add up and suggests a fix.
+- Profit page, calendar, search, CSV, JSON and calendar exports, dark mode, and it works fine on a phone.
+- Optional ChatGPT connection through an MCP server with OAuth. ChatGPT can read your records and log bets
+  from your screenshots, but anything risky waits for you to confirm it.
+- Optional Telegram summary each morning.
 
-## Tech
+## Built with
 
-Python 3.11+, FastAPI, Jinja templates, SQLite. No JavaScript framework (a little vanilla JS), a strict Content
-Security Policy, self-hosted fonts. The MCP server is a separate process using the official `mcp` SDK.
+Python 3.11, FastAPI, Jinja and SQLite. There's very little JavaScript and no frontend framework.
 
-```
-bets/            the web app: services (all money changes), ledger metrics, issues, plans, offers, pages
-bets_mcp/        the optional MCP server for AI assistants (OAuth, tools, rate limits)
-plugin/          the assistant plugin manifest and its instructions
-deploy/          example systemd units and nginx configuration
-scripts/         install, backup, restore, password and token helpers
-tests/           app tests          tests_mcp/   end-to-end MCP tests (OAuth -> MCP -> API -> services)
-docs/            OPERATIONS.md (how a real deployment runs), DEVELOPMENT.md, design system, assistant docs
-```
-
-## Quick start (local)
+## Running it locally
 
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 export BETS_DATA_DIR=./var BETS_PORT=8760 BETS_SECURE_COOKIES=0 BETS_PUBLIC_ORIGINS=http://127.0.0.1:8760
-.venv/bin/python -m bets.cli init-login - admin    # prints a random password for user "admin"
+.venv/bin/python -m bets.cli init-login - admin
 .venv/bin/python -m bets.serve
 ```
 
-Open <http://127.0.0.1:8760/bets/> and sign in. The database is created in `./var` on first start
-(`BETS_SECURE_COOKIES=0` is only for plain-http local use).
+The `init-login` line prints a random password for the user `admin`. Then go to
+http://127.0.0.1:8760/bets/ and sign in. The database is created in `./var` the first time it starts.
+`BETS_SECURE_COOKIES=0` is only there because you're on plain http locally.
 
 ## Tests
 
 ```bash
 .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/python -m pytest tests
+```
 
-# MCP tests (a second virtualenv; they start the app and the MCP server and talk to them over HTTP)
+The MCP tests need their own virtualenv because they start the app and the MCP server and talk to both over
+HTTP:
+
+```bash
 python3 -m venv .venv-mcp
 .venv-mcp/bin/pip install -r requirements-mcp.txt pytest httpx
 .venv-mcp/bin/python -m pytest tests_mcp
 ```
 
-## Deploying
+## Putting it on a server
 
-The app listens on loopback only and is meant to sit behind a reverse proxy under `/bets/`. The `deploy/`
-folder has hardened systemd units (separate unprivileged users for the app and the MCP server) and nginx
-configuration; `scripts/install.sh` installs them. Replace `example.com` with your domain throughout.
-[`docs/OPERATIONS.md`](docs/OPERATIONS.md) describes how a real deployment is run: login, backups, restores,
-the assistant integration and day-to-day use.
+It only listens on localhost and expects to sit behind nginx under `/bets/`. The `deploy` folder has systemd
+units (the app and the MCP server run as separate locked-down users) and the nginx config, and
+`scripts/install.sh` sets it all up. Swap `example.com` for your own domain. There's more detail in
+[docs/OPERATIONS.md](docs/OPERATIONS.md), including backups and restoring.
 
 ## Security
 
-- One login, scrypt-hashed; sessions signed with a per-install secret; CSRF tokens and origin checks on every
-  write; strict CSP; rate-limited login.
-- The data directory is private to the service user; backups and data are never served.
-- The assistant uses its own scoped token or OAuth; every assistant change is validated server-side, idempotent
-  and audited, and deletions or financial corrections can be set to wait for you.
+There's one login, with the password hashed using scrypt. Sessions are signed, every form has a CSRF token,
+the Content Security Policy is strict and failed logins are rate limited. The data folder is only readable by
+the app's own user and is never served. ChatGPT gets its own token, everything it sends is checked on the
+server and logged, and you can make deletions and money corrections wait for your approval.
+
+## Disclaimer
+
+This is a personal project. It isn't financial advice, and it's up to you to stick to each bookmaker's terms.
 
 ## Licence
 
-[MIT](LICENSE)
+MIT, see [LICENSE](LICENSE).

@@ -65,7 +65,7 @@ round to the penny once, half-up.
 * **Stakes** leave the bookmaker balance when placed and count towards profit only once the bet
   settles; until then they are "tied up". **Lay liability** is held exposure, not a cash movement.
 * **Profit** = winnings, lay results, commission, refunds, free-bet winnings, cash rewards/bonuses,
-  adjustments and reconciliations — plus the stakes of settled bets.
+  adjustments and reconciliations, plus the stakes of settled bets.
 * **Free bets** are tokens, not cash: no balance change until they win.
 * System entries have a posting key; changing a bet **supersedes** its entry (kept, linked,
   audited) instead of adding a second one. Manual entries are *reversed*, never deleted.

@@ -45,7 +45,7 @@ Every submit tool takes `dry_run` (check only) and `request_id` (retry safety). 
 an identical call within 15 minutes is treated as a retry, so a retried tool call never stores twice.
 Errors are structured: `unknown_account`, `account_exists`, `missing_field`, `invalid_amount`,
 `invalid_odds`, `invalid_funding_type`, `invalid_datetime`, `wrong_account_kind`, `not_found`,
-`duplicate_conflict`, `rate_limited`, `assistant_disabled`, `unavailable` — with `field`, `value` and a
+`duplicate_conflict`, `rate_limited`, `assistant_disabled`, `unavailable`, with `field`, `value` and a
 `hint`. Warnings carry codes such as `suspicious_value` and `server_calculated`.
 
 **Cannot** (no tool exists): confirm/reject, settle, delete, void, reconcile directly, export, read
@@ -60,7 +60,7 @@ registration; pure OAuth and DCR were rejected at "Create as a plugin" (see git 
 * **Anonymous:** MCP `initialize` / `tools/list` (tool structure only, no user data), `get_intake_schema`
   (rules and fields) and `calculate_match` with an explicit commission. Looking up an exchange's stored
   commission by name needs the sign-in.
-* **OAuth (`bets.intake`):** every tool that touches the dashboard — all `submit_*` tools and
+* **OAuth (`bets.intake`):** every tool that touches the dashboard: all `submit_*` tools and
   `get_candidate_status`. Without a valid token they return `isError` with
   `_meta["mcp/www_authenticate"]` (`Bearer resource_metadata=…, error="insufficient_scope", …`), which makes
   ChatGPT offer to connect, then retry with the token.
@@ -75,7 +75,7 @@ registration; pure OAuth and DCR were rejected at "Create as a plugin" (see git 
   fetched (HTTPS, no redirects, 16 KB, 5 s, cached by max-age); the document must name itself as `client_id`,
   carry no secret, allow token method `none`, list an allowed ChatGPT callback and allow the code flow. No
   registration endpoint, no client secrets. Authorization code + PKCE (S256); `resource` is bound into tokens.
-* **Approving a connection** needs a one-time **connection code** made on the Pi (works once, 15 minutes) —
+* **Approving a connection** needs a one-time **connection code** made on the Pi (works once, 15 minutes),
   not your /bets/ password.
 * The plugin calls the Assistant Intake API with its own token in `mcp-var/assistant-token` (0600); ChatGPT
   never sees it. The /bets/ login does not work on the MCP endpoint and plugin tokens work nowhere else.
@@ -125,7 +125,7 @@ After changing tools on the server: Plugins → the plugin → **Refresh**.
 * *assistant_disabled*: `scripts/mcp-access.sh link-assistant` (the Assistant Intake token was rotated
   or disabled elsewhere).
 * *Cloudflare*: ChatGPT's requests come from OpenAI's servers. If Cloudflare bot protection or a WAF rule
-  challenges them, connecting fails before reaching the Pi — allow `/bets/mcp*` and the two
+  challenges them, connecting fails before reaching the Pi. Allow `/bets/mcp*` and the two
   `/.well-known/oauth-*/bets/mcp` paths in that rule. Nothing else needs changing; no router ports.
 * *Secure MCP Tunnel* (OpenAI's outbound tunnel client) is an alternative for servers that must stay off
   the internet; it needs an OpenAI Platform organisation, API key with Tunnels permissions and a running
