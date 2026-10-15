@@ -68,6 +68,21 @@ units (the app and the MCP server run as separate locked-down users) and the ngi
 `scripts/install.sh` sets it all up. Swap `example.com` for your own domain. There's more detail in
 [docs/OPERATIONS.md](docs/OPERATIONS.md), including backups and restoring.
 
+## Updating
+
+Everything you enter is kept in the `var` folder, which git never touches. When there's a new version, run this
+from the project folder:
+
+```bash
+scripts/update.sh
+```
+
+It backs up your data, pulls the new code, installs anything new and restarts the app. The app upgrades its own
+database when it starts, so your bets, free bets and history all carry over. If anything goes wrong, the backup
+is in `var/backups`.
+
+To hear about new versions, watch the repo on GitHub (Watch, then Custom, then Releases).
+
 ## Security
 
 There's one login, with the password hashed using scrypt. Sessions are signed, every form has a CSRF token,
