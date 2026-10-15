@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% from "macros.html" import money with context %}
+{% block title %}Calculator · Matched betting{% endblock %}
+{% block content %}
+<h1 class="page-title">Calculator</h1>
+<form method="get" class="panel cols2" data-calc>
+  <label>Type <select name="kind" data-calc-kind>{% for k in ('qualifying', 'free_bet_snr', 'free_bet_sr') %}<option value="{{ k }}" {{ 'selected' if p.kind == k }}>{{ KIND_LABELS[k] }}</option>{% endfor %}</select></label>
+  <label>Back stake / free bet £ <input name="stake" inputmode="decimal" value="{{ p.stake or '' }}" data-calc-stake></label>
+  <label>Back odds <input name="back_odds" inputmode="decimal" value="{{ p.back_odds or '' }}" data-calc-back></label>
+  <label>Lay odds <input name="lay_odds" inputmode="decimal" value="{{ p.lay_odds or '' }}" data-calc-lay></label>
+  {% if calc_ex['items'] %}<label>Exchange <select name="exchange" data-exchange>
+    {% for e in calc_ex['items'] %}<option value="{{ e.id }}" data-commission="{{ e.commission }}"{% if e.stale %} data-stale="{{ e.stale }}"{% endif %} {{ 'selected' if chosen and e.id == chosen.id }}>{{ e.name }} · {{ e.commission }}%</option>{% endfor %}
+    <option value="" {{ 'selected' if not chosen }}>Other (type the commission)</option></select></label>{% endif %}
+  <label>Commission % <input name="commission" inputmode="decimal" value="{{ commission }}" data-calc-commission></label>
+  <p class="small warn-text span2" data-commission-warning hidden></p>
+  <button class="btn">Calculate</button>
+</form>
+<section class="panel">
+  {% if err %}<p class="flash err" data-calc-error>{{ err }}</p>{% else %}<p class="small muted" data-calc-error></p>{% endif %}
+  <div class="calc-out big" data-calc-out {{ 'hidden' if not m }}>
+    <div><span>Lay stake</span><b data-out="lay_stake">{{ fmt(m.lay_stake) if m else '' }}</b></div>
+    <div><span>Liability</span><b data-out="liability">{{ fmt(m.liability) if m else '' }}</b></div>
+    <div><span>If back wins</span><b data-out="if_back_wins">{{ fmt(m.if_back_wins, signed=True) if m else '' }}</b></div>
+    <div><span>If lay wins</span><b data-out="if_lay_wins">{{ fmt(m.if_lay_wins, signed=True) if m else '' }}</b></div>
+  </div>
+  {% if m and m.retention_pct is not none %}<p>Retention: <b>{{ m.retention_pct }}%</b> of the free bet.</p>{% endif %}
+  <p class="small muted">Lay stake is rounded to the penny; outcomes use that rounded stake. This only tells you what to place — place bets yourself.</p>
+</section>
+{% endblock %}

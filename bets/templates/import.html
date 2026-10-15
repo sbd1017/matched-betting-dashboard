@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% from "macros.html" import money, csrf_field with context %}
+{% block title %}Import · Matched betting{% endblock %}
+{% block content %}
+{% macro input(f, prefix) -%}
+{% if f.enum %}<select name="{{ prefix }}{{ f.name }}">{% if not f.required %}<option value="">—</option>{% endif %}{% for o in f.enum %}<option value="{{ o }}" {{ 'selected' if f.value|string == o }}>{{ o.replace('_', ' ') }}</option>{% endfor %}</select>
+{%- elif f.type == 'datetime' %}<input type="datetime-local" name="{{ prefix }}{{ f.name }}" value="{{ f.value }}">
+{%- else %}<input name="{{ prefix }}{{ f.name }}" value="{{ f.value }}"{% if f.type in ('money', 'percent', 'odds') %} inputmode="decimal"{% endif %}{% if f.required %} required{% endif %}>{% endif %}
+{%- endmacro %}
+<p class="crumbs"><a href="{{ u('/imports') }}">Imports</a></p>
+<h1 class="page-title">{{ title }}</h1>
+<section class="panel">
+  <p class="muted">{{ kind_title }} · from {{ source_label }} · {{ local(item.created_at) }}{% if item.edited_at %} · edited by you {{ local(item.edited_at) }}{% endif %} ·
+    <b>{{ {'needs_confirmation': 'Pending — nothing saved yet', 'applied': 'Confirmed', 'rejected': 'Rejected'}[item.status] }}</b>{% if item.decided_by == 'assistant-auto' %} · confirmed automatically by the Matched Betting Assistant (Trusted Assistant mode){% elif item.decided_by == 'user-bulk' %} · confirmed in bulk{% endif %}</p>
+  {% if item.hold_reason and item.status == 'needs_confirmation' %}<p class="flash warn">Trusted Assistant mode held this for you: {{ item.hold_reason }}</p>{% endif %}
+  {% for w in warnings %}<p class="flash warn">{{ w }}</p>{% endfor %}
+  {% if kind == 'position' %}
+  <p>{{ c.selection or '' }}{% if c.market %} · {{ c.market }}{% endif %} · {{ KIND_LABELS[c.kind] }}{% if c.event_at %} · {{ local(c.event_at) }}{% endif %}</p>
+  <table class="table"><thead><tr><th>Side</th><th>Account</th><th class="num">Stake</th><th class="num">Odds</th><th class="num">Liability</th></tr></thead><tbody>
+  {% for l in pv.legs %}<tr><td>{{ l.side|capitalize }}{% if l.free_bet_id %} (free bet){% endif %}</td><td>{{ l.account }}{% if l.commission %} · {{ l.commission }}{% endif %}</td><td class="num">{{ fmt(l.stake_pence) }}</td><td class="num">{{ l.odds }}</td><td class="num">{{ fmt(l.liability) if l.liability is not none else '' }}</td></tr>{% endfor %}
+  </tbody></table>
+  {% if pv.expected is not none %}<p>If the back wins {{ money(pv.if_back, True) }} · if it loses {{ money(pv.if_lay, True) }} · expected {{ money(pv.expected, True) }}</p>{% endif %}
+  {% if pv.similar %}<p class="flash warn">You already have an open position for this event:
+    {% for s in pv.similar %}<a href="{{ u('/positions/' ~ s.id) }}">#{{ s.id }} {{ s.selection }}</a> {% endfor %}</p>{% endif %}
+  {% else %}
+  <table class="table"><tbody>{% for label, value in rows %}<tr><th>{{ label }}</th><td>{{ value }}</td></tr>{% endfor %}</tbody></table>
+  {% endif %}
+  {% if item.status == 'needs_confirmation' %}
+  <form method="post" action="{{ u('/imports/' ~ item.id) }}" class="row-actions">{{ csrf_field() }}
+    <button class="btn primary" name="decision" value="accept">Confirm</button>
+    <a class="btn" href="?edit=1#edit">Edit</a>
+    <button class="btn danger" name="decision" value="reject">Reject</button>
+  </form>
+  <p class="small muted">Imported details are not trusted until you confirm them. Confirming uses the same rules as the forms (figures are recalculated by the app).</p>
+  {% elif applied_url %}<p><a href="{{ u(applied_url) }}">See what was saved</a></p>{% endif %}
+</section>
+{% if item.status == 'needs_confirmation' %}
+<details class="panel" id="edit"{% if request.query_params.get('edit') or flash_err %} open{% endif %}><summary>Edit before confirming</summary>
+  <form method="post" action="{{ u('/imports/' ~ item.id ~ '/edit') }}">{{ csrf_field() }}
+    <div class="cols2">
+    {% for f in fields %}<label{% if f.name in ('notes', 'text', 'requirement', 'reward') %} class="span2"{% endif %}>{{ f.name.replace('_', ' ')|capitalize }}{% if f.required %} *{% endif %} {{ input(f, 'f_') }}</label>{% endfor %}
+    </div>
+    {% for leg in legs %}
+    <fieldset class="cols3"><legend class="small muted">{{ 'Bet ' ~ (leg.i + 1) if leg.values else 'Add another bet (optional)' }}</legend>
+      {% for lf in leg_fields if lf.name != 'use_free_bet' %}<label>{{ lf.name.replace('_', ' ')|capitalize }} {{ input(dict(lf, value=leg['values'].get(lf.name, ''), required=False), 'leg' ~ leg.i ~ '_') }}</label>{% endfor %}
+      {% if leg['values'].get('free_bet_id') %}<input type="hidden" name="leg{{ leg.i }}_free_bet_id" value="{{ leg['values'].free_bet_id }}"><span class="small muted">Uses free bet #{{ leg['values'].free_bet_id }}</span>{% endif %}
+    </fieldset>
+    {% endfor %}
+    <p class="row-actions"><button class="btn primary">Save changes</button></p>
+    <p class="small muted">Saving checks everything again; nothing is recorded until you confirm.</p>
+  </form>
+</details>
+{% endif %}
+{% endblock %}

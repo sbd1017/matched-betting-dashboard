@@ -1,0 +1,17 @@
+[Unit]
+Description=Back up the matched betting database (keeps the newest 30)
+
+[Service]
+Type=oneshot
+User=bets
+Group=bets
+WorkingDirectory=/opt/matched-betting
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/matched-betting/.venv/bin/python -m bets.cli backup --keep 30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/matched-betting/var
+IPAddressDeny=any

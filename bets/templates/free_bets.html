@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% from "macros.html" import money, pill, csrf_field, history_list with context %}
+{% block title %}Free bets · Matched betting{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Free bets</h1><span class="aside"><a class="btn k" href="#add">Add free bets</a></span></div>
+<div class="status n3">
+  <div class="stat hero"><span class="k">To use</span><span class="v">{{ fmt(total) }}</span><span class="s">{{ rows|selectattr('status', 'equalto', 'available')|list|length }} free bet(s), face value</span></div>
+  <div class="stat"><span class="k">Worth to you</span><span class="v">{{ fmt(worth) }}</span><span class="s">at {{ 'your' if retention.snr.own else 'a typical' }} {{ retention.snr.pct }}% retention</span></div>
+  <div class="stat{{ ' alert' if expiring else '' }}"><span class="k">Expiring in 3 days</span><span class="v">{{ fmt(expiring) }}</span><span class="s">{{ 'use these first' if expiring else 'nothing urgent' }}</span></div>
+</div>
+<nav class="tabs"><a href="?show=available" class="{{ 'active' if show == 'available' }}">Available</a><a href="?show=all" class="{{ 'active' if show == 'all' }}">All</a></nav>
+<section class="first">
+  {% for f in rows %}
+  <article class="item static fbrow" id="fb-{{ f.id }}">
+    <span class="amt {{ 'loss' if f.status == 'available' and f.expires_at and f.expires_at <= soon else ('m3' if f.status != 'available' else '') }}">{{ fmt(f.face_value_pence)|replace('.00', '') }}</span>
+    <span class="item-main"><b>{{ f.account }} <span class="m3">{{ f.kind|upper }}</span></b>
+      <span class="muted small">{% if f.expires_at %}Expires {{ local(f.expires_at) }} ({{ relative(f.expires_at) }}){% else %}No expiry recorded{% endif %}{% if f.offer_title %} · {{ f.offer_title }}{% endif %}</span>
+      {% if f.left %}<span class="drain"><i data-left="{{ f.left }}"></i></span>{% endif %}
+      {% if f.position_id %}<span class="small"><a href="{{ u('/positions/' ~ f.position_id) }}">Used in position #{{ f.position_id }}</a>{% if f.realised is not none %} · kept {{ fmt(f.realised, signed=True) }}{% endif %}</span>{% endif %}
+    </span>
+    <span class="item-side">
+      {{ pill(f.status|capitalize, 'warn' if f.status == 'available' and f.expires_at and f.expires_at <= soon else ('ok' if f.status == 'used' else '')) }}
+      {% if f.status == 'available' %}<a class="btn small primary" href="{{ u('/quick-add') }}?kind=free_bet_{{ f.kind }}&free_bet_id={{ f.id }}&back_account={{ f.account_id }}">Use</a>
+      {% if f.expires_at %}<a class="small" href="{{ u('/calendar/free_bet/' ~ f.id ~ '.ics') }}">Calendar</a>{% endif %}{% endif %}
+    </span>
+    <details class="span-all"><summary class="small">Edit</summary>
+      <form method="post" action="{{ u('/free-bets/' ~ f.id) }}" class="cols3">{{ csrf_field() }}
+        <label>Status <select name="status">{% for st in ('available', 'used', 'expired', 'void') %}<option {{ 'selected' if f.status == st }}>{{ st }}</option>{% endfor %}</select></label>
+        <label>Expires <input type="datetime-local" name="expires_at" value="{{ to_input(f.expires_at) }}"></label>
+        <label>Offer <select name="offer_id"><option value="">None</option>{% for o in all_offers if not o.account_id or o.account_id == f.account_id %}<option value="{{ o.id }}" {{ 'selected' if f.offer_id == o.id }}>{{ o.title }}</option>{% endfor %}</select></label>
+        <label>Notes <input name="notes" value="{{ f.notes }}"></label>
+        {% if not f.position_id %}<label>Used in position <small class="muted">sets it used</small><select name="position_id"><option value="">Not used yet</option>
+          {% for c in f.link_choices %}<option value="{{ c.id }}">#{{ c.id }} — {{ c.event }}{% if c.free_bet_id %} (uses #{{ c.free_bet_id }}: replace it){% endif %}</option>{% endfor %}</select></label>{% endif %}
+        <button class="btn small">Save</button></form>
+      <p class="row-actions small">
+        {% if f.position_id %}<span class="m2">Linked to <a href="{{ u('/positions/' ~ f.position_id) }}">position #{{ f.position_id }}</a>:</span>
+          <a href="{{ u('/ops/unlink_free_bet_from_position') }}?free_bet_id={{ f.id }}&next=/free-bets%3Fshow%3Dall">Unlink…</a>
+        {% else %}
+          {% if f.status != 'void' %}<a href="{{ u('/ops/void_free_bet') }}?free_bet_id={{ f.id }}&next=/free-bets%3Fshow%3Dall">Void…</a> ·{% endif %}
+          <a class="danger" href="{{ u('/ops/delete_free_bet') }}?free_bet_id={{ f.id }}&next=/free-bets%3Fshow%3Dall">Delete…</a>
+        {% endif %}
+      </p>
+      <details><summary class="small">History</summary>{{ history_list(history_of('free_bet', f.id)) }}</details>
+    </details>
+  </article>
+  {% else %}<p class="muted">No free bets.</p>{% endfor %}
+</section>
+<details class="panel" id="add" open><summary>Add a free bet</summary>
+  <form method="post" action="{{ u('/free-bets') }}" class="cols3">{{ csrf_field() }}
+    <label>Bookmaker <select name="account_id" required>{% for a in bookmakers %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}</select></label>
+    <label>Value £ <small class="muted">each</small><input name="face_value" inputmode="decimal" required></label>
+    <label>How many <input name="count" inputmode="numeric" value="1"></label>
+    <label>Type <select name="kind"><option value="snr">SNR (stake not returned)</option><option value="sr">SR (stake returned)</option></select></label>
+    <label>Expires <input type="datetime-local" name="expires_at"></label>
+    <label>Offer <select name="offer_id"><option value="">None</option>{% for o in offers %}<option value="{{ o.id }}">{{ o.title }}</option>{% endfor %}</select></label>
+    <label>Notes <input name="notes"></label>
+    <button class="btn primary">Add free bet</button>
+  </form>
+  <p class="small muted">A free bet is a token, not cash: it adds nothing to your balance until it wins.</p>
+</details>
+{% endblock %}

@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% from "macros.html" import money, pill, csrf_field, offer_terms_fields with context %}
+{% block title %}Offers · Matched betting{% endblock %}
+{% block content %}
+{% set stage = {'qualifying': 0, 'awaiting_reward': 1, 'reward_received': 2, 'converting': 3} %}
+<div class="page-head"><h1>Offers</h1><span class="aside"><a class="btn k" href="#add">Add an offer</a></span></div>
+<div class="status n3">
+  <div class="stat hero"><span class="k">Finished offers</span><span class="v {{ 'gain' if stats.net > 0 else ('loss' if stats.net < 0 else '') }}">{{ fmt(stats.net, signed=True) }}</span><span class="s">from {{ stats.done }} completed offer{{ '' if stats.done == 1 else 's' }}</span></div>
+  <div class="stat"><span class="k">In progress</span><span class="v">{{ stats.running }}</span><span class="s">qualifying, waiting or using the reward</span></div>
+  <div class="stat"><span class="k">Average per offer</span><span class="v">{{ fmt(stats.avg, signed=True) }}</span><span class="s">qualifying loss + what the reward made</span></div>
+</div>
+<nav class="tabs"><a href="?show=active" class="{{ 'active' if show == 'active' }}">Active</a><a href="?show=all" class="{{ 'active' if show == 'all' }}">All</a></nav>
+
+{% set running = rows|selectattr('status', 'in', ['qualifying', 'awaiting_reward', 'reward_received', 'converting'])|list %}
+{% set waiting = rows|selectattr('status', 'equalto', 'not_started')|list %}
+{% set closed = rows|selectattr('status', 'in', ['complete', 'expired', 'abandoned'])|list %}
+<section class="first">
+  <div class="grp">In progress<span class="cnt">{{ running|length }}</span></div>
+  {% for o in running %}
+  {% set st = stage.get(o.status, 0) %}
+  <a class="offer" href="{{ u('/offers/' ~ o.id) }}">
+    <div><h3>{{ o.title }}</h3><p>{{ o.account or 'Any bookmaker' }} · {{ OFFER_TYPE_LABELS[o.offer_type] }}{% if o.expires_at %} · ends {{ local(o.expires_at, '%-d %b') }}{% endif %}</p></div>
+    <div class="steps" aria-label="Step {{ st + 1 }} of 4">{% for label in ('Qualify', 'Awaiting reward', 'Reward received', 'Using reward') %}<div class="{{ 'd' if loop.index0 < st else ('c' if loop.index0 == st else '') }}">{{ label }}</div>{% endfor %}</div>
+    <div class="st"><b>{{ OFFER_STATUS_LABELS[o.status] }}</b><span>{{ o.reward or '' }}</span></div>
+    <div class="v"><b class="{{ 'gain' if o.realised > 0 else ('loss' if o.realised < 0 else '') }}">{{ fmt(o.realised, signed=True) }}</b><small>so far</small></div>
+  </a>
+  {% else %}<div class="empty">Nothing in progress.</div>{% endfor %}
+</section>
+{% if waiting %}
+<section>
+  <div class="grp">Not started<span class="cnt">{{ waiting|length }}</span></div>
+  {% for o in waiting %}
+  <div class="row nokind"><div><h3><a href="{{ u('/offers/' ~ o.id) }}">{{ o.title }}</a></h3><p>{{ o.account or 'Any bookmaker' }}{% if o.reward %} · {{ o.reward }}{% endif %}{% if o.expires_at %} · ends {{ local(o.expires_at) }}{% endif %}</p></div>
+    <div class="ac"><a class="btn s k" href="{{ u('/quick-add') }}?offer_id={{ o.id }}{% if o.account_id %}&back_account={{ o.account_id }}{% endif %}">Place the qualifier</a></div></div>
+  {% endfor %}
+</section>
+{% endif %}
+{% if closed %}
+<section>
+  <div class="grp">Finished<span class="cnt">{{ closed|length }}</span></div>
+  <div class="tw"><table>
+    <thead><tr><th>Offer</th><th>Bookmaker</th><th>Status</th><th class="rt">Net</th></tr></thead>
+    <tbody>{% for o in closed %}<tr class="go"><td><a class="ev" href="{{ u('/offers/' ~ o.id) }}">{{ o.title }}</a><small>{{ o.positions }} position(s)</small></td><td class="m2">{{ o.account or '—' }}</td>
+      <td>{{ pill(OFFER_STATUS_LABELS[o.status], 'ok' if o.status == 'complete' else '') }}</td><td class="rt">{{ money(o.realised, True) }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% endif %}
+<details class="panel" id="add" {{ 'open' if not rows }}><summary>Add an offer</summary>
+  <form method="post" action="{{ u('/offers') }}" class="cols2">
+    {{ csrf_field() }}
+    <label class="span2">Title <input name="title" placeholder="Bet £10 Get £30 in Free Bets" required></label>
+    <label>Bookmaker <select name="account_id"><option value="">—</option>{% for a in bookmakers %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}</select></label>
+    <label>Type <select name="offer_type">{% for k, label in OFFER_TYPE_LABELS.items() %}<option value="{{ k }}">{{ label }}</option>{% endfor %}</select></label>
+    <label>Qualifying requirement <input name="requirement" placeholder="£10 at min odds 2.0"></label>
+    <label>Reward <input name="reward" placeholder="3 × £10 SNR free bets"></label>
+    <label>Reward value £ <input name="reward_value" inputmode="decimal" placeholder="worked out from the terms"></label>
+    {{ offer_terms_fields() }}
+    <label>Starts <input type="datetime-local" name="starts_at"></label>
+    <label>Expires <input type="datetime-local" name="expires_at"></label>
+    <label class="span2">Notes <textarea name="notes" rows="2"></textarea></label>
+    <button class="btn primary">Add offer</button>
+  </form>
+</details>
+{% endblock %}

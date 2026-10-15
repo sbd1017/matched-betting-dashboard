@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% from "macros.html" import settle_buttons, csrf_field with context %}
+{% block title %}Issues · Matched betting{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Issues</h1>
+  <span class="aside">{% if issues %}<span class="pill {{ 'bad' if n.fix else ('warn' if n.act else '') }}">{{ issues|length }} to look at</span>{% endif %}</span></div>
+<p class="note">Anything wrong or waiting in your records, with a link to where it’s fixed. This list updates itself: an item disappears once it’s put right.</p>
+
+{% for sev in ('fix', 'act', 'info') %}
+{% set group = issues|selectattr('severity', 'equalto', sev)|list %}
+{% if group %}
+<section class="{{ 'first' if loop.first else '' }}">
+  <div class="grp">{{ LABELS[sev] }}<span class="cnt">{{ group|length }}</span></div>
+  {% for i in group %}
+  <div class="row">
+    <div class="kind {{ {'fix': 'k-red', 'act': 'k-amb', 'info': 'k-ink'}[sev] }}"><b>{{ i.kind }}</b>{% if i.when %}<span>{{ i.when }}</span>{% endif %}</div>
+    <div><h3><a href="{{ u(i.href) }}">{{ i.title }}</a></h3><p>{{ i.text }}</p>
+      {% if i.reopened %}<p class="small warn-text">Reviewed before (“{{ i.reopened.previously_dismissed }}”) but {{ i.reopened.because }}.</p>{% endif %}
+      <details class="small"><summary>Not a problem</summary><form method="post" action="{{ u('/ops/dismiss_issue') }}" class="row-actions">{{ csrf_field() }}<input type="hidden" name="issue_key" value="{{ i.key }}"><input type="hidden" name="next" value="/issues">{% if i.severity == 'fix' %}<input type="hidden" name="confirm_fix_severity" value="1">{% endif %}<input name="reason" required placeholder="why it is fine (kept in the history)" maxlength="300"><button class="btn small">Mark reviewed</button></form></details>
+      {% for r in i.repairs if not r.blocked and r.change != 'dismiss_issue' %}<p class="small">
+        {% if r.level == 'safe_edit' %}<form method="post" action="{{ u('/ops/' ~ r.change) }}" class="inline" data-confirm="{{ r.label }}?">{{ csrf_field() }}{% for k, v in r.params.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}<input type="hidden" name="next" value="/issues"><button class="btn small">Fix: {{ r.label }}</button></form>
+        {% else %}<a class="btn small" href="{{ u('/ops/' ~ r.change) }}?{{ r.query }}">Preview fix: {{ r.label }}</a>{% endif %}</p>{% endfor %}</div>
+    <div class="ac">{% if i.settle %}{{ settle_buttons(i.position_id, u('/issues')) }}{% else %}<a class="btn{{ ' k' if sev == 'fix' else ' s' }}" href="{{ u(i.href) }}">{{ i.action }}</a>{% endif %}</div>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+{% endfor %}
+{% if not issues %}
+<section class="first"><div class="empty"><b>Nothing to put right</b>Every ledger check passes, nothing is waiting to be settled and every balance has been checked recently.</div></section>
+{% endif %}
+
+{% if reviewed %}
+<section>
+  <div class="sh"><h2>Reviewed: not a problem</h2><span class="n">{{ reviewed|length }}</span></div>
+  {% for i in reviewed %}<div class="row"><div class="kind k-ink"><b>{{ i.kind }}</b><span>{{ local(i.dismissed.at, '%-d %b') }}</span></div>
+    <div><h3>{{ i.title }}</h3><p>“{{ i.dismissed.reason }}” · {{ i.dismissed.by }}. Comes back by itself if its facts change.</p></div>
+    <div class="ac"><form method="post" action="{{ u('/ops/reopen_issue') }}">{{ csrf_field() }}<input type="hidden" name="issue_key" value="{{ i.key }}"><input type="hidden" name="next" value="/issues"><button class="btn s">Show again</button></form></div></div>{% endfor %}
+</section>
+{% endif %}
+<section>
+  <div class="sh"><h2>Ledger checks</h2>{% if s.consistent %}<span class="pill ok">All {{ s.checks|length }} pass</span>{% else %}<span class="pill warn">Some fail</span>{% endif %}</div>
+  <ul class="checks">{% for c in s.checks %}<li class="{{ 'ok' if c.ok else ('warn' if c.warning else 'bad') }}">{{ c.name }}{% if c.detail %}<br><span class="small muted">{{ c.detail }}</span>{% endif %}</li>{% endfor %}</ul>
+</section>
+{% endblock %}

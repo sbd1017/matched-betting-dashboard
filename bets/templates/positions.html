@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% from "macros.html" import money, position_item, settle_buttons, bet_ladder with context %}
+{% block title %}Positions · Matched betting{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Positions</h1><span class="aside"><a class="btn k" href="{{ u('/quick-add') }}">Quick add</a></span></div>
+
+<div class="status n3">
+  <div class="stat hero"><span class="k">{{ {'open': 'Open', 'incomplete': 'Incomplete', 'settled': 'Settled', 'void': 'Void', 'all': 'All positions'}.get(status, 'Positions') }}{% if p.account or p.offer or p['from'] or p.to or p.result %}, filtered{% endif %}</span>
+    {% if status in ('settled', 'all') %}<span class="v {{ 'gain' if total > 0 else ('loss' if total < 0 else '') }}">{{ fmt(total, signed=True) }}</span><span class="s">realised from {{ rows|length }} position{{ '' if rows|length == 1 else 's' }}</span>
+    {% elif status == 'open' %}<span class="v {{ 'gain' if counts.locked > 0 else ('loss' if counts.locked < 0 else '') }}">{{ fmt(counts.locked, signed=True) }}</span><span class="s">locked in across {{ counts.open }} open position{{ '' if counts.open == 1 else 's' }} (the worse outcome of each)</span>
+    {% else %}<span class="v">{{ rows|length }}</span><span class="s">{{ 'need a back or lay bet' if status == 'incomplete' else 'shown below' }}</span>{% endif %}</div>
+  <div class="stat"><span class="k">{{ 'Lay liability held' if status == 'open' else 'Open now' }}</span><span class="v">{{ fmt(counts.liability) if status == 'open' else counts.open }}</span><span class="s">{% if status == 'open' %}comes back as the lays settle{% else %}{{ fmt(counts.locked, signed=True) }} locked in · <a href="{{ u('/positions') }}?status=open">see them</a>{% endif %}</span></div>
+  <div class="stat{{ ' alert' if counts.started else '' }}"><span class="k">To settle</span><span class="v">{{ counts.started }}</span><span class="s">{{ 'events that have started' if counts.started else 'nothing has started yet' }}</span></div>
+</div>
+
+<nav class="tabs">
+  {% for key, label in (('open', 'Open'), ('incomplete', 'Incomplete'), ('settled', 'Settled'), ('void', 'Void'), ('all', 'All')) %}
+  <a href="{{ u('/positions') }}?status={{ key }}" class="{{ 'active' if status == key }}">{{ label }}</a>
+  {% endfor %}
+</nav>
+<details class="filters" {{ 'open' if p.account or p.offer or p['from'] or p.to or p.result }}>
+  <summary>Filter</summary>
+  <form method="get" class="cols3">
+    <input type="hidden" name="status" value="{{ status }}">
+    <label>Account <select name="account"><option value="">Any</option>
+      {% for a in accounts %}<option value="{{ a.id }}" {{ 'selected' if p.account == a.id|string }}>{{ a.name }}</option>{% endfor %}</select></label>
+    <label>Offer <select name="offer"><option value="">Any</option>
+      {% for o in offers %}<option value="{{ o.id }}" {{ 'selected' if p.offer == o.id|string }}>{{ o.title }}</option>{% endfor %}</select></label>
+    <label>Result <select name="result"><option value="">Any</option>
+      <option value="profit" {{ 'selected' if p.result == 'profit' }}>Profit</option><option value="loss" {{ 'selected' if p.result == 'loss' }}>Loss</option></select></label>
+    <label>From <input type="date" name="from" value="{{ p['from'] or '' }}"></label>
+    <label>To <input type="date" name="to" value="{{ p.to or '' }}"></label>
+    <button class="btn">Apply</button>
+  </form>
+</details>
+
+<section class="first">
+  {% for r in rows %}
+  {% if r.status == 'open' and r.legs %}
+  <div class="row top">
+    <div class="kind {{ 'k-amb' if r.started or r.incomplete else 'k-blue' }}"><b>{{ 'Started' if r.started else ('Incomplete' if r.incomplete else 'Open') }}</b><span>{{ local(r.event_at, '%a %-d %b') if r.event_at else '—' }}</span></div>
+    <div><h3><a href="{{ u('/positions/' ~ r.id) }}">{{ r.event }}</a></h3>
+      <p>{{ r.selection or r.market or KIND_LABELS[r.kind] }}{% if r.event_at %} · {{ local(r.event_at, '%H:%M') }}{% endif %}{% if r.offer_title %} · {{ r.offer_title }}{% endif %}{% if r.hedging == 'intentionally_unhedged' %} · Unhedged by design · accepted exposure {{ fmt(r.accepted_exposure_pence) }}{% endif %}</p>
+      {{ bet_ladder(r) }}</div>
+    <div class="ac">{% if r.started %}{{ settle_buttons(r.id, u('/positions') ~ '?status=' ~ status) }}{% elif r.incomplete %}<a class="btn s" href="{{ u('/positions/' ~ r.id) }}">Add the bet</a>{% endif %}</div>
+  </div>
+  {% else %}{{ position_item(r) }}{% endif %}
+  {% else %}<div class="empty"><b>No positions here</b>{% if status == 'open' %}Positions you record with Quick add appear here until they settle.{% else %}Try another tab or clear the filter.{% endif %}</div>{% endfor %}
+  {% if rows and status in ('settled', 'all') %}<p class="split sum"><span>{{ rows|length }} position(s) · realised</span>{{ money(total, True) }}</p>{% endif %}
+</section>
+{% endblock %}

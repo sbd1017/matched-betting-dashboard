@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% from "macros.html" import pill with context %}
+{% block title %}Operations · Matched betting{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Operations</h1><span class="aside"><a class="btn s" href="{{ u('/plans') }}">Bet plans</a> <a class="btn s" href="{{ u('/issues') }}">Issues</a></span></div>
+<p class="note">Everything that needs doing, in order. The Matched Betting Assistant sees exactly this list (get_operating_brief / get_next_actions).</p>
+{% macro rows(items, empty) %}
+  {% for a in items %}
+  <div class="row">
+    <div class="kind {{ {'urgent': 'k-red', 'high': 'k-amb', 'medium': 'k-ink', 'low': 'k-ink'}[a.priority] }}"><b>{{ a.priority|capitalize }}</b><span>{{ a.deadline_label or '' }}</span></div>
+    <div><h3>{{ a.title }}</h3><p>{{ a.explanation }}{% if a.potential_value %} · worth about £{{ a.potential_value }}{% endif %}</p>
+      <p class="small m2">{{ a.recommended_action }}{% if a.records %} · {{ a.records|join(', ') }}{% endif %}</p></div>
+    <div class="ac">{% for r in a.records %}{% set parts = r.split(' #') %}{% if parts|length == 2 and parts[0] in LINKS %}<a class="btn s" href="{{ u(LINKS[parts[0]] ~ parts[1]) }}">{{ {'plan': 'Plan', 'position': 'Position', 'offer': 'Offer', 'free_bet': 'Free bet', 'transfer': 'Transfer', 'expected_reward': 'Reward'}.get(parts[0], 'Open') }} #{{ parts[1] }}</a>{% endif %}{% endfor %}</div>
+  </div>
+  {% else %}<div class="row nokind"><div><p class="m2">{{ empty }}</p></div><div class="ac"></div></div>{% endfor %}
+{% endmacro %}
+<section class="first"><div class="grp">Needs me<span class="cnt">{{ needs_me|length }}</span></div>{{ rows(needs_me, 'Nothing for you to do outside the app right now.') }}</section>
+<section><div class="grp">The assistant can do<span class="cnt">{{ assistant|length }}</span></div>{{ rows(assistant, 'Nothing for the assistant to resolve.') }}</section>
+<section><div class="grp">Waiting<span class="cnt">{{ waiting|length }}</span></div>{{ rows(waiting, 'Nothing waiting.') }}</section>
+<section><div class="grp">Problems<span class="cnt">{{ problems|length }}</span></div>
+  {% for i in problems %}<a class="row" href="{{ u('/issues') }}"><div class="kind {{ 'k-red' if i.severity == 'fix' else 'k-amb' }}"><b>{{ i.kind }}</b><span></span></div><div><h3>{{ i.title }}</h3><p>{{ i.text }}</p></div><div class="ac"></div></a>
+  {% else %}<div class="row nokind"><div><p class="m2">No problems.</p></div><div class="ac"></div></div>{% endfor %}</section>
+<section><div class="grp">Completed today<span class="cnt">{{ done|length }}</span></div>
+  <ul class="list small">{% for d in done %}<li><span class="m2">{{ local(d.at, '%H:%M') }}</span> {{ d.text }} <span class="m3">· {{ d.who }}</span></li>{% else %}<li class="muted">Nothing yet today.</li>{% endfor %}</ul></section>
+{% endblock %}

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Still to come · Matched betting{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="{{ u('/') }}">Dashboard</a></p>
+<div class="page-head"><h1>Still to come</h1><span class="aside"><b class="{{ 'gain' if b.total > 0 else ('loss' if b.total < 0 else '') }}">{{ fmt(b.total, signed=True) }}</b></span></div>
+<p class="note">What your open bets have locked in, plus unused free bets at {{ 'your' if b.retention.snr.own else 'a typical' }} {{ b.retention.snr.pct }}% retention, plus rewards you have qualified for. Every item is listed, so nothing in the total is hidden.</p>
+
+{% if b.not_counted_finished %}
+<section class="first">
+  <div class="grp">Not counted: probably finished, still open<span class="cnt">{{ b.not_counted_finished|length }}</span></div>
+  {% for i in b.not_counted_finished %}
+  <a class="row" href="{{ u('/positions/' ~ i.position_id) }}#settle">
+    <div class="kind k-amb"><b>Settle</b><span>{{ local(i.event_at, '%a %H:%M') if i.event_at else '—' }}</span></div>
+    <div><h3>{{ i.event }}</h3><p>{{ i.selection or '' }}{% if i.projection %} · if the back wins {{ fmt(i.projection.if_back_wins, signed=True) }}, if it loses {{ fmt(i.projection.if_back_loses, signed=True) }}{% endif %} · started {{ relative(i.event_at) }}: enter the result so it stops being a projection</p></div>
+    <div class="ac"></div>
+  </a>
+  {% endfor %}
+</section>
+{% endif %}
+
+<section class="{{ '' if b.not_counted_finished else 'first' }}">
+  <div class="grp">Open positions<span class="cnt">{{ fmt(b.locked, signed=True) }}</span></div>
+  {% for i in b.positions %}
+  <a class="row" href="{{ u('/positions/' ~ i.position_id) }}">
+    <div class="kind k-ink"><b>Locked</b><span>{{ local(i.event_at, '%a %H:%M') if i.event_at else '—' }}</span></div>
+    <div><h3>{{ i.event }}</h3><p>{{ i.selection or '' }}{% if i.projection %} · back wins {{ fmt(i.projection.if_back_wins, signed=True) }} · back loses {{ fmt(i.projection.if_back_loses, signed=True) }}{% if i.projection.assumes_all_lays_lose_together %} · several lays: assumes they all lose together{% endif %}{% else %} · {{ i.note }}{% endif %}</p></div>
+    <div class="ac"><div class="worth"><b class="{{ 'gain' if i.projection and i.projection.locked > 0 else ('loss' if i.projection and i.projection.locked < 0 else '') }}">{{ fmt(i.projection.locked, signed=True) if i.projection else '—' }}</b><small>the worse outcome</small></div></div>
+  </a>
+  {% else %}<div class="row nokind"><div><p class="m2">No open positions.</p></div><div class="ac"></div></div>{% endfor %}
+</section>
+
+<section>
+  <div class="grp">Free bets<span class="cnt">{{ fmt(b.free_bets) }}</span></div>
+  {% for f in b.free_bet_items %}
+  <div class="row">
+    <div class="kind k-blue"><b>{{ f.kind|upper }}</b><span>{{ local(f.expires_at, '%a %-d %b') if f.expires_at else 'no expiry' }}</span></div>
+    <div><h3>{{ f.account }} {{ fmt(f.face_value) }}</h3><p>× {{ f.retention_pct }}% {{ 'your' if f.own_retention else 'typical' }} retention</p></div>
+    <div class="ac"><div class="worth"><b>{{ fmt(f.worth) }}</b><small>estimated</small></div></div>
+  </div>
+  {% else %}<div class="row nokind"><div><p class="m2">No unused free bets.</p></div><div class="ac"></div></div>{% endfor %}
+</section>
+
+{% if b.reward_items %}
+<section>
+  <div class="grp">Rewards still to arrive<span class="cnt">{{ fmt(b.rewards) }}</span></div>
+  {% for r in b.reward_items %}
+  <a class="row" href="{{ u('/offers/' ~ r.offer_id) }}"><div class="kind k-ink"><b>Reward</b><span></span></div>
+    <div><h3>{{ r.title }}</h3><p>{{ fmt(r.reward_value) }} at {{ b.retention.snr.pct }}% retention</p></div>
+    <div class="ac"><div class="worth"><b>{{ fmt(r.worth) }}</b><small>estimated</small></div></div></a>
+  {% endfor %}
+</section>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% from "macros.html" import errors_box with context %}
+{% block title %}Quick Add · Matched betting{% endblock %}
+{% block content %}
+<h1 class="page-title">Quick Add</h1>
+{{ errors_box(errors) }}
+<form method="post" action="{{ u('/quick-add/preview') }}" class="panel stack" id="quick" data-calc>
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <div class="cols2">
+    <label>Type
+      <select name="kind" data-calc-kind>
+        {% for k in ('qualifying', 'free_bet_snr', 'free_bet_sr') %}<option value="{{ k }}" {{ 'selected' if v.kind == k }}>{{ KIND_LABELS[k] }}</option>{% endfor %}
+      </select></label>
+    <label>Free bet
+      <select name="free_bet_id" data-free-bet>
+        <option value="">None</option>
+        {% for f in free_bets %}<option value="{{ f.id }}" data-value="{{ plain(f.face_value_pence) }}" data-account="{{ f.account_id }}" data-kind="free_bet_{{ f.kind }}" {{ 'selected' if v.free_bet_id|string == f.id|string }}>{{ f.account }} {{ fmt(f.face_value_pence) }} {{ f.kind|upper }}</option>{% endfor %}
+      </select></label>
+  </div>
+  {% if v.offer_hint %}<p class="flash ok small">Offer terms: {{ v.offer_hint }}</p>{% endif %}
+  <label>Event <input name="event" value="{{ v.event or '' }}" list="ev-list" placeholder="Liverpool v Arsenal" required autocomplete="off"></label>
+  <div class="cols2">
+    <label>Selection <input name="selection" value="{{ v.selection or '' }}" list="sel-list" placeholder="Liverpool" autocomplete="off"></label>
+    <label>Market <input name="market" value="{{ v.market or '' }}" list="mkt-list" placeholder="Match odds" autocomplete="off"></label>
+  </div>
+  <label>Starts <input type="datetime-local" name="event_at" value="{{ v.event_at or '' }}"></label>
+
+  <fieldset class="leg back"><legend>Back</legend>
+    <label>Bookmaker
+      <select name="back_account" required>
+        <option value="">Choose…</option>
+        {% for a in bookmakers %}<option value="{{ a.id }}" {{ 'selected' if v.back_account|string == a.id|string }}>{{ a.name }}</option>{% endfor %}
+      </select></label>
+    <div class="cols2">
+      <label>Stake £ <input name="back_stake" inputmode="decimal" value="{{ v.back_stake or '' }}" data-calc-stake></label>
+      <label>Odds <input name="back_odds" inputmode="decimal" value="{{ v.back_odds or '' }}" data-calc-back></label>
+    </div>
+  </fieldset>
+
+  <fieldset class="leg lay"><legend>Lay</legend>
+    <label>Exchange
+      <select name="lay_account" data-exchange>
+        <option value="">None yet</option>
+        {% for a in exchanges %}{% set pr = commission_promo(a) %}<option value="{{ a.id }}" data-commission="{{ (a.commission_bp / 100)|string }}"{% if pr and pr.expired %} data-stale="{{ pr.warning }}"{% endif %} {{ 'selected' if v.lay_account|string == a.id|string }}>{{ a.name }}</option>{% endfor %}
+      </select></label>
+    <div class="cols3">
+      <label>Odds <input name="lay_odds" inputmode="decimal" value="{{ v.lay_odds or '' }}" data-calc-lay></label>
+      <label>Commission % <input name="commission" inputmode="decimal" value="{{ v.commission or '' }}" data-calc-commission></label>
+      <label>Lay stake £ <input name="lay_stake" inputmode="decimal" value="{{ v.lay_stake or '' }}" placeholder="auto" data-calc-laystake></label>
+    </div>
+    <p class="small warn-text" data-commission-warning hidden></p>
+  </fieldset>
+
+  <div class="calc-out" data-calc-out hidden>
+    <div><span>Lay stake</span><b data-out="lay_stake"></b></div>
+    <div><span>Liability</span><b data-out="liability"></b></div>
+    <div><span>If back wins</span><b data-out="if_back_wins"></b></div>
+    <div><span>If lay wins</span><b data-out="if_lay_wins"></b></div>
+  </div>
+  <p class="small muted" data-calc-error></p>
+
+  <details>
+    <summary>More</summary>
+    <label>Offer
+      <select name="offer_id">
+        <option value="">None</option>
+        {% for o in offers %}<option value="{{ o.id }}" {{ 'selected' if v.offer_id|string == o.id|string }}>{{ o.title }}{% if o.account %} ({{ o.account }}){% endif %}</option>{% endfor %}
+      </select></label>
+    <label>Placed at <input type="datetime-local" name="placed_at" value="{{ v.placed_at or '' }}"></label>
+    <label>Notes <textarea name="notes" rows="2">{{ v.notes or '' }}</textarea></label>
+  </details>
+  <datalist id="ev-list">{% for x in suggest.events %}<option value="{{ x }}">{% endfor %}</datalist>
+  <datalist id="sel-list">{% for x in suggest.selections %}<option value="{{ x }}">{% endfor %}</datalist>
+  <datalist id="mkt-list">{% for x in suggest.markets %}<option value="{{ x }}">{% endfor %}</datalist>
+  <button class="btn primary block">Review</button>
+  <p class="small muted">Nothing is saved until you confirm on the next screen. This app never places bets.</p>
+</form>
+{% endblock %}

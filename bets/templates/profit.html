@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% from "macros.html" import money, csrf_field with context %}
+{% block title %}Profit · Matched betting{% endblock %}
+
+{% macro signed(v) -%}<b class="{{ 'gain' if v > 0 else ('loss' if v < 0 else '') }}">{{ fmt(v, signed=True) }}</b>{%- endmacro %}
+{% macro type_label(t) -%}{{ KIND_LABELS.get(t) or CATEGORY_LABELS.get(t, t) }}{%- endmacro %}
+{% set titles = {'week': 'By week', 'month': 'By month', 'year': year ~ ' by month', 'all': 'All time'} %}
+{% set unit = {'week': 'week', 'month': 'month', 'year': 'month', 'all': 'year'}[view] %}
+
+{% block content %}
+<div class="dash">
+<div class="page-head">
+  <h1>Profit</h1>
+  <nav class="range aside" aria-label="Period">
+    {% for v, label in (('week', 'Week'), ('month', 'Month'), ('year', 'Year'), ('all', 'All time')) %}
+    <a href="{{ u('/profit') }}?view={{ v }}"{% if v == view %} aria-current="page"{% endif %}>{{ label }}</a>
+    {% endfor %}
+  </nav>
+</div>
+
+{# ------------------------------------------------------------ the three figures #}
+{% set life = fmt(s.profit_lifetime, signed=True) %}
+<div class="status n3" aria-label="Realised profit">
+  <div class="stat hero">
+    <span class="k">Realised profit, all time</span>
+    <a class="v hl {{ 'gain' if s.profit_lifetime > 0 else ('loss' if s.profit_lifetime < 0 else '') }}" href="{{ u('/profit') }}?view=all">{{ life[:-3] }}<span class="p">{{ life[-3:] }}</span></a>
+    <span class="s">Settled bets and rewards, by settlement date. Transfers and funding are never profit.</span>
+  </div>
+  <div class="stat">
+    <span class="k">This month</span>
+    <a class="v hl {{ 'gain' if s.profit_month > 0 else ('loss' if s.profit_month < 0 else '') }}" href="{{ u('/profit') }}?view=month&amp;p={{ this_month }}">{{ fmt(s.profit_month, signed=True) }}</a>
+    <span class="s">since 1 {{ now_month_label }}</span>
+  </div>
+  <div class="stat">
+    <span class="k">This week</span>
+    <a class="v hl {{ 'gain' if s.profit_week > 0 else ('loss' if s.profit_week < 0 else '') }}" href="{{ u('/profit') }}?view=week&amp;p={{ this_week }}">{{ fmt(s.profit_week, signed=True) }}</a>
+    <span class="s">since Monday</span>
+  </div>
+</div>
+
+{# ------------------------------------------------------------ chart #}
+<section class="first">
+  <div class="sh"><h2>{{ titles[view] }}</h2>
+    {% if view == 'year' %}<span class="aside range">{% for y in years %}<a href="{{ u('/profit') }}?view=year&amp;year={{ y }}"{% if y == year %} aria-current="page"{% endif %}>{{ y }}</a>{% endfor %}</span>
+    {% elif view == 'week' %}<span class="n">last {{ rows|length }} weeks</span>{% endif %}
+  </div>
+  {% if chart %}
+  {% set c = chart %}
+  <div class="pchart-wrap" data-chart="bars" tabindex="0" aria-label="Profit per {{ unit }} chart. Use the left and right arrow keys to read each {{ unit }}, Enter to open it.">
+  <svg class="pchart" viewBox="0 0 {{ c.w }} 100" preserveAspectRatio="none" role="img" aria-label="Net realised profit per {{ unit }}, with the running total">
+    <line class="zero" x1="0" x2="{{ c.w }}" y1="{{ c.zero }}" y2="{{ c.zero }}" vector-effect="non-scaling-stroke"/>
+    {% for b in c.bars %}
+    <a href="{{ u('/profit') }}?view={{ view }}{% if view == 'year' %}&amp;year={{ year }}{% endif %}&amp;p={{ b.row.key }}#detail" data-bar="{{ loop.index0 }}" tabindex="-1"><rect class="bar {{ b.cls }}{{ ' dim' if selected and selected.key != b.row.key else '' }}" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.w }}" height="{{ b.h }}"><title>{{ b.row.label }}: {{ fmt(b.row.net, signed=True) }} (running total {{ fmt(b.row.running, signed=True) }})</title></rect></a>
+    {% endfor %}
+    {% if c.line %}<polyline class="cum" points="{{ c.line }}" vector-effect="non-scaling-stroke"/>{% endif %}
+  </svg>
+  <ol class="sr-only" data-chart-points>
+    {% for b in c.bars %}
+    <li data-x="{{ b.px }}" data-y="{{ b.py }}" data-href="{{ u('/profit') }}?view={{ view }}{% if view == 'year' %}&amp;year={{ year }}{% endif %}&amp;p={{ b.row.key }}#detail"><b>{{ b.row.label }}{% if b.row.current %} (so far){% endif %}</b><span>Net profit {{ fmt(b.row.net, signed=True) }}</span><span>Running profit {{ fmt(b.row.running, signed=True) }}</span></li>
+    {% endfor %}
+  </ol>
+  </div>
+  <div class="pchart-x" data-cols="{{ c.n }}" aria-hidden="true">{% for l in c.labels %}<span>{{ l }}</span>{% endfor %}</div>
+  <p class="note"><i class="key pos"></i>profit <i class="key neg"></i>loss per {{ unit }} · <i class="key line"></i>running total{% if c.best and c.best.net > 0 %} · best {{ c.best.label }} {{ fmt(c.best.net, signed=True) }}{% endif %}{% if c.worst and c.worst.net < 0 %} · worst {{ c.worst.label }} {{ fmt(c.worst.net, signed=True) }}{% endif %}</p>
+  {% elif history %}
+  {% set h = history %}
+  {% if h.points %}
+  <div class="pchart-wrap" data-chart="steps" tabindex="0" aria-label="Running profit chart. Use the left and right arrow keys to read each settlement.">
+  <svg class="pchart" viewBox="0 0 1000 100" preserveAspectRatio="none" role="img" aria-label="Running total of realised profit since the first settled bet">
+    <line class="zero" x1="0" x2="1000" y1="{{ h.zero }}" y2="{{ h.zero }}" vector-effect="non-scaling-stroke"/>
+    <path class="cum" d="{{ h.path }}" vector-effect="non-scaling-stroke"/>
+  </svg>
+  <ol class="sr-only" data-chart-points>
+    {% for st in h.steps %}
+    <li data-x="{{ st.px }}" data-y="{{ st.py }}"><b>{{ local(st.at, '%-d %b %Y, %H:%M') }}</b><span>Settlement {{ fmt(st.change, signed=True) }}</span><span>Running profit {{ fmt(st.running, signed=True) }}</span><span class="m3">{{ st.events|join(', ')|truncate(70) }}</span></li>
+    {% endfor %}
+  </ol>
+  </div>
+  <div class="pchart-x ends" aria-hidden="true"><span>{{ local(h.first, '%-d %b %Y') }}</span><span>today</span></div>
+  <p class="note"><i class="key line"></i>running total after every settlement · high {{ fmt(h.high, signed=True) }}{% if h.low < 0 %} · low {{ fmt(h.low, signed=True) }}{% endif %}</p>
+  {% else %}<div class="empty"><b>No settled bets yet</b>Profit appears here when your first bet settles.</div>{% endif %}
+  {% endif %}
+
+  {# ---------------------------------------------------------- period table #}
+  <div class="tw"><table class="compact ptable">
+    <thead><tr><th>{{ unit|capitalize }}</th><th class="rt">Net profit</th><th class="rt">Qualifying</th><th class="rt">Free bets &amp; rewards</th>{% if has_other %}<th class="rt">Other</th>{% endif %}<th class="rt">Running total</th></tr></thead>
+    <tbody>
+    {% for r in table %}
+    {% set months = months_by_year.get(r.key) if view == 'all' else none %}
+    <tr{% if selected and selected.key == r.key %} class="sel"{% endif %}>
+      <td>{% if months %}<button type="button" class="expander" data-expand="m-{{ r.key }}" aria-expanded="{{ 'true' if open_year == r.key else 'false' }}" aria-controls="m-{{ r.key }}" aria-label="Show {{ r.key }} by month"></button>{% endif %}<a href="{{ u('/profit') }}?view={{ view }}{% if view == 'year' %}&amp;year={{ year }}{% endif %}&amp;p={{ r.key }}#detail"{% if selected and selected.key == r.key %} aria-current="true"{% endif %}>{{ r.label }}</a>{% if r.current %} <span class="m3">so far</span>{% endif %}</td>
+      <td class="rt">{% if r.count %}{{ money(r.net, True) }}{% else %}<span class="m3">—</span>{% endif %}</td>
+      <td class="rt">{% if r.qualifying %}{{ money(r.qualifying, True) }}{% endif %}</td>
+      <td class="rt">{% if r.free %}{{ money(r.free, True) }}{% endif %}</td>
+      {% if has_other %}<td class="rt">{% if r.other %}{{ money(r.other, True) }}{% endif %}</td>{% endif %}
+      <td class="rt">{{ money(r.running, True) }}</td>
+    </tr>
+    {% if months %}
+    <tbody class="months" id="m-{{ r.key }}"{% if open_year != r.key %} hidden{% endif %}>
+    {% for m in months %}
+    <tr class="month{{ ' sel' if selected and selected.key == m.key else '' }}">
+      <td><a href="{{ u('/profit') }}?view=all&amp;p={{ m.key }}#detail"{% if selected and selected.key == m.key %} aria-current="true"{% endif %}>{{ m.label }}</a>{% if m.current %} <span class="m3">so far</span>{% endif %}</td>
+      <td class="rt">{{ money(m.net, True) }}</td>
+      <td class="rt">{% if m.qualifying %}{{ money(m.qualifying, True) }}{% endif %}</td>
+      <td class="rt">{% if m.free %}{{ money(m.free, True) }}{% endif %}</td>
+      {% if has_other %}<td class="rt">{% if m.other %}{{ money(m.other, True) }}{% endif %}</td>{% endif %}
+      <td class="rt">{{ money(m.running, True) }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+    <tbody>
+    {% endif %}
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+
+{# ------------------------------------------------------------ drill-down #}
+{% if selected %}
+<section id="detail">
+  <div class="sh"><h2>What made {{ selected.label }}</h2><span class="n">{{ lines|length }} item{{ '' if lines|length == 1 else 's' }}</span><span class="aside"><a href="{{ u('/profit') }}?view={{ view }}{% if view == 'year' %}&amp;year={{ year }}{% endif %}">Clear</a></span></div>
+  <div class="tw"><table class="compact">
+    <thead><tr><th>Settled</th><th>Event</th><th>Bookmaker</th><th>Offer</th><th>Type</th><th class="rt">Result</th></tr></thead>
+    <tbody>
+    {% for l in lines %}
+    <tr{% if l.position_id %} class="go"{% endif %}>
+      <td class="m2">{{ local(l.settled, '%a %-d %b %H:%M') }}</td>
+      <td>{% if l.position_id %}<a class="ev" href="{{ u('/positions/' ~ l.position_id) }}">{{ l.event }}</a> <span class="m3">{{ l.selection or '' }}</span>{% else %}{{ l.event }}{% endif %}</td>
+      <td>{{ l.bookmaker }}</td>
+      <td>{% if l.offer_id %}<a href="{{ u('/offers/' ~ l.offer_id) }}">{{ l.offer }}</a>{% else %}<span class="m3">—</span>{% endif %}</td>
+      <td>{{ type_label(l.type) }}</td>
+      <td class="rt">{{ money(l.result, True) }}</td>
+    </tr>
+    {% else %}<tr><td colspan="6" class="m2">Nothing settled in this {{ unit }}.</td></tr>{% endfor %}
+    </tbody>
+    {% if lines %}<tfoot><tr><td colspan="5">Net profit, {{ selected.label }}</td><td class="rt">{{ money(selected.net, True) }}</td></tr></tfoot>{% endif %}
+  </table></div>
+</section>
+{% endif %}
+
+{# ------------------------------------------------------------ where it came from #}
+<section>
+  <div class="sh"><h2>Where it came from</h2><span class="n">{{ scope }}</span></div>
+  <div class="cols3 tables">
+    {% for title, rows_ in (('Bookmaker', by_bookmaker), ('Offer', by_offer), ('Type', by_type)) %}
+    <div class="tw"><table class="compact">
+      <thead><tr><th>{{ title }}</th><th class="rt">Bets</th><th class="rt">Profit</th></tr></thead>
+      <tbody>
+      {% for r in rows_ %}<tr><td>{{ type_label(r.name) if title == 'Type' else r.name }}</td><td class="rt m2">{{ r.count }}</td><td class="rt">{{ money(r.net, True) }}</td></tr>
+      {% else %}<tr><td colspan="3" class="m2">Nothing yet.</td></tr>{% endfor %}
+      </tbody>
+    </table></div>
+    {% endfor %}
+  </div>
+  <p class="note">{% if offers_done.count %}{{ offers_done.count }} completed offer{{ '' if offers_done.count == 1 else 's' }}, {{ fmt(offers_done.total, signed=True) }} in total: <b>{{ fmt(offers_done.average, signed=True) }}</b> per completed offer (its qualifying bets, free bets and rewards).{% else %}No completed offers yet.{% endif %}</p>
+</section>
+
+{# ------------------------------------------------------------ winnings #}
+<section id="efficiency">
+  <div class="sh"><h2>How well it’s going</h2><span class="aside">From settled bets only</span></div>
+  <div class="kpis">
+    <div><b>{{ eff.ql_pct ~ '%' if eff.ql_pct is not none else '—' }}</b><span>qualifying loss, as a share of qualifying stakes ({{ eff.ql_count }} bets, {{ fmt(eff.ql_total, signed=True) }})</span></div>
+    <div><b>{{ eff.retention ~ '%' if eff.retention is not none else '—' }}</b><span>kept from free bets, all time ({{ eff.retention_n }}){% if eff.retention_30 is not none %} · {{ eff.retention_30 }}% in the last 30 days{% endif %}</span></div>
+    <div><b>{{ eff.days_to_complete ~ ' days' if eff.days_to_complete is not none else '—' }}</b><span>average from an offer’s first bet to completing it ({{ eff.completed }} offers)</span></div>
+    <div><b class="{{ 'loss' if eff.expired_value else '' }}">{{ fmt(eff.expired_value) }}</b><span>in free bets that expired unused ({{ eff.expired_count }})</span></div>
+  </div>
+</section>
+
+<section id="winnings">
+  <div class="sh"><h2>Winnings</h2><span class="aside"><a href="{{ u('/accounts') }}">Record a profit withdrawal</a></span></div>
+  <div class="kpis">
+    <div><b class="{{ 'gain' if w.realised > 0 else '' }}">{{ fmt(w.realised, signed=True) }}</b><span>Realised profit</span></div>
+    <div><b>{{ fmt(w.withdrawn) }}</b><span>Taken out as profit</span></div>
+    <div><b>{{ fmt(w.retained, signed=True) }}</b><span>Retained in your bankroll</span></div>
+    <div><b>{{ fmt(s.bankroll_withdrawn) }}</b><span>Ordinary bankroll withdrawals (not profit)</span></div>
+  </div>
+  <p class="note">A profit withdrawal is a transfer from a betting account to your bank with the type <i>Profit withdrawal</i>. It reduces retained profit, never realised profit. Earlier withdrawals keep the type they were recorded with.</p>
+
+  <div class="kpis" id="plan">
+    <div><b>{{ fmt(w.allocatable) }}</b><span>Profit available to allocate</span></div>
+    <div><b>{{ fmt(w.unlocked) }}</b><span>Cash unlocked now</span></div>
+    <div><b>{{ fmt(w.above_minimum) }}</b><span>Above your minimum bankroll{% if not w.plan.min_bankroll_pence %} (none set){% endif %}</span></div>
+    <div>{% if w.suggestion is not none %}<b>{{ fmt(w.suggestion) }}</b><span>Your plan suggests</span>{% else %}<b class="m3">—</b><span>Set a plan below</span>{% endif %}</div>
+  </div>
+  <p class="note">Cash unlocked now: betting balances less lay liability held ({{ fmt(s.lay_liability) }}) and temporary funding still owed ({{ fmt(s.temporary_outstanding) }}); stakes in open bets ({{ fmt(s.unsettled_stakes) }}) and free bets are not cash.
+    {% if w.plan.put_away_pct %}Plan: {{ w.plan.put_away_pct }}% of profit from completed months ({{ fmt(w.completed, signed=True) }} before {{ local(w.month_start, '%-d %b') }}) is {{ fmt(w.target) }}; {{ fmt(w.withdrawn) }} already taken out leaves {{ fmt(w.still_to_put_away) }}, limited by profit available, cash unlocked and your minimum bankroll.{% endif %}
+    These are planning figures only: nothing is moved automatically, and they don’t say what is safe to invest.</p>
+
+  <details><summary>{{ 'Change' if w.plan.put_away_pct or w.plan.min_bankroll_pence else 'Set' }} your winnings plan</summary>
+    <form method="post" action="{{ u('/profit/plan') }}" class="cols3">{{ csrf_field() }}
+      <label>Minimum working bankroll £ <input name="min_bankroll" inputmode="decimal" value="{{ plain(w.plan.min_bankroll_pence) }}"></label>
+      <label>Put away % of each completed month’s profit <input name="put_away_pct" inputmode="numeric" value="{{ w.plan.put_away_pct }}"></label>
+      <button class="btn">Save plan</button>
+    </form>
+  </details>
+
+  {% if w.withdrawals %}
+  <div class="tw"><table class="compact">
+    <thead><tr><th>Profit withdrawn</th><th>From</th><th>To</th><th class="rt">Amount</th></tr></thead>
+    <tbody>{% for t in w.withdrawals %}<tr><td class="m2">{{ local(t.at, '%a %-d %b %Y') }}</td><td>{{ t.from_name }}</td><td>{{ t.to_name }}</td><td class="rt">{{ fmt(t.amount_pence) }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% endif %}
+</section>
+</div>
+{% endblock %}

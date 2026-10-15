@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf_field with context %}
+{% block title %}Check balances · Matched betting{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="{{ u('/accounts') }}">Accounts</a></p>
+<div class="page-head"><h1>Check balances</h1></div>
+<p class="note">Open each bookmaker and exchange, then tick the ones that match or type the balance they show. For an exchange, say whether you read the <b>available</b> balance (lay liability excluded) or the total. A difference is kept as <b>unresolved</b> (nothing posted to profit) unless you tick the box below.</p>
+<form method="post" action="{{ u('/accounts/check') }}" class="first" data-confirm="Record these balances?">
+  <input type="hidden" name="adjust_shown" value="1">
+  {{ csrf_field() }}
+  <div class="tw"><table class="check-table">
+    <thead><tr><th>Account</th><th>Last checked</th><th class="rt">The app has</th><th>Matches</th><th>Or the real balance is</th></tr></thead>
+    <tbody>
+    {% for a in rows %}
+    <tr class="{{ 'stale' if a.stale else '' }}">
+      <td><a class="ev" href="{{ u('/accounts/' ~ a.id) }}">{{ a.name }}</a><small>{{ a.kind|capitalize }}{% if a.liability %} · liability {{ fmt(a.liability) }} held{% endif %}</small></td>
+      <td class="{{ 'warn' if a.stale else 'm2' }}">{% if a.last_check %}{{ relative(a.last_check.at) }}{% if a.last_check.difference_pence %}<small>{{ fmt(a.last_check.difference_pence, signed=True) }} adjusted</small>{% else %}<small>matched</small>{% endif %}{% else %}Never{% endif %}</td>
+      <td class="rt">{% if a.kind == 'exchange' %}<b>{{ fmt(a.balance - a.liability) }}</b><small>available · total {{ fmt(a.balance) }}</small>
+        <select name="basis_{{ a.id }}" aria-label="{{ a.name }}: which figure"><option value="available">I read available</option><option value="total">I read the total</option></select>
+        {% else %}<b>{{ fmt(a.balance) }}</b>{% endif %}</td>
+      <td><label class="check"><input type="checkbox" name="match_{{ a.id }}" value="1" aria-label="{{ a.name }} matches {{ fmt(a.balance) }}"> Yes</label></td>
+      <td><input name="actual_{{ a.id }}" inputmode="decimal" placeholder="{{ plain(a.balance) }}" aria-label="Real balance at {{ a.name }}"></td>
+    </tr>
+    {% else %}<tr><td colspan="5" class="m2">No bookmaker or exchange accounts yet.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  <div class="actions"><label class="field grow">Note (optional) <input name="note" placeholder="e.g. weekly check"></label></div>
+  <p class="actions"><button class="btn k">Record balances</button><a class="btn" href="{{ u('/accounts') }}">Cancel</a></p>
+  <label class="check"><input type="checkbox" name="adjust" value="1"> Record any difference as a profit/loss adjustment (only if you know it is a real gain or loss)</label>
+</form>
+{% endblock %}

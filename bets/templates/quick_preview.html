@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% from "macros.html" import money with context %}
+{% block title %}Confirm · Matched betting{% endblock %}
+{% block content %}
+<h1 class="page-title">Check and save</h1>
+<section class="panel">
+  <h2>{{ c.event }}</h2>
+  <p class="muted">{{ c.selection }}{% if c.market %} · {{ c.market }}{% endif %}{% if c.event_at %} · {{ local(c.event_at) }}{% endif %} · {{ KIND_LABELS[c.kind] }}</p>
+  {% for w in warnings %}<p class="flash warn">{{ w }}</p>{% endfor %}
+  <table class="table">
+    <thead><tr><th>Side</th><th>Account</th><th class="num">Stake</th><th class="num">Odds</th><th class="num">Liability</th></tr></thead>
+    <tbody>
+    {% for l in pv.legs %}
+      <tr><td>{{ l.side|capitalize }}{% if l.free_bet_id %} (free bet){% endif %}</td><td>{{ l.account }}</td>
+          <td class="num">{{ fmt(l.stake_pence) }}</td><td class="num">{{ l.odds }}</td>
+          <td class="num">{{ fmt(l.liability) if l.liability is not none else '' }}{% if l.commission %} <span class="muted small">{{ l.commission }}</span>{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if pv.expected is not none %}
+  <div class="calc-out">
+    <div><span>If back wins</span>{{ money(pv.if_back, True) }}</div>
+    <div><span>If lay wins</span>{{ money(pv.if_lay, True) }}</div>
+    <div><span>Expected</span>{{ money(pv.expected, True) }}</div>
+  </div>
+  {% if pv.lay_differs %}<p class="flash warn">The lay stake differs from the calculator's {{ fmt(pv.match.lay_stake) }}.</p>{% endif %}
+  {% else %}
+  <p class="muted">Only one side entered: this position will show as incomplete until you add the other bet.</p>
+  {% endif %}
+  {% if pv.similar %}<p class="flash warn">You already have an open position for this event:
+    {% for s in pv.similar %}<a href="{{ u('/positions/' ~ s.id) }}">#{{ s.id }} {{ s.selection }}</a> {% endfor %}</p>{% endif %}
+  <form method="post" action="{{ u('/quick-add/confirm') }}" class="row-actions">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    {% for k, val in f.items() if k != 'csrf_token' %}<input type="hidden" name="{{ k }}" value="{{ val }}">{% endfor %}
+    <button class="btn primary">Save position</button>
+  </form>
+  <form method="get" action="{{ u('/quick-add') }}">
+    {% for k, val in f.items() if k != 'csrf_token' %}<input type="hidden" name="{{ k }}" value="{{ val }}">{% endfor %}
+    <button class="btn">Edit</button>
+  </form>
+</section>
+{% endblock %}

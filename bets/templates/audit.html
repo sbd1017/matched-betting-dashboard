@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Audit · Matched betting{% endblock %}
+{% block content %}
+<h1 class="page-title">Audit trail</h1>
+<nav class="tabs">{% for e in ('', 'change', 'position', 'leg', 'ledger', 'transfer', 'reconciliation', 'account', 'offer', 'free_bet', 'import', 'session') %}<a href="?entity={{ e }}" class="{{ 'active' if entity == e }}">{{ e or 'All' }}</a>{% endfor %}</nav>
+<section class="panel"><ul class="audit">
+  {% for a in rows %}<li><span class="muted small">{{ local(a.at, '%d %b %H:%M:%S') }}</span> <b>{{ a.entity }}{% if a.entity_id %} #{{ a.entity_id }}{% endif %}</b> {{ a.action }} <span class="small m2">· {{ a.actor or 'earlier' }}{% if a.request_id %} · request {{ a.request_id }}{% endif %}</span>{% if a.note %} — {{ a.note }}{% endif %}
+    {% if a.before_json or a.after_json %}<br><code class="small">{{ a.before_json or '' }} → {{ a.after_json or '' }}</code>{% endif %}</li>
+  {% else %}<li class="muted">Nothing yet.</li>{% endfor %}
+</ul></section>
+{% endblock %}

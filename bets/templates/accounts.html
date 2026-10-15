@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% from "macros.html" import history_list, money, pill, csrf_field with context %}
+{% block title %}Accounts · Matched betting{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Accounts</h1><span class="aside"><a class="btn k" href="{{ u('/accounts/check') }}">Check balances</a><a class="btn" href="#move">Move money</a></span></div>
+<div class="status">
+  <div class="stat hero"><span class="k">Betting balances</span><span class="v">{{ fmt(s.betting_balance) }}</span><span class="s">Bookmakers {{ fmt(s.bookmaker_balance) }} · Exchanges {{ fmt(s.exchange_balance) }}</span></div>
+  <div class="stat"><span class="k">Available to bet</span><span class="v">{{ fmt(s.available) }}</span><span class="s">after {{ fmt(s.lay_liability) }} of liability</span></div>
+  <div class="stat"><span class="k">Your capital in play</span><span class="v">{{ fmt(s.own_capital) }}</span><span class="s">excludes temporary funding</span></div>
+  <div class="stat"><span class="k">Temporary funding out</span><span class="v">{{ fmt(s.temporary_outstanding) }}</span><span class="s">owed back to your bank · realised profit {{ fmt(s.profit_lifetime, signed=True) }}</span></div>
+</div>
+<section class="first">
+  <div class="tw"><table class="accounts-table">
+    <thead><tr><th>Account</th><th class="rt">Balance</th><th class="rt">Tied up</th><th class="rt">Free bets</th><th>Last checked</th></tr></thead>
+    <tbody>
+    {% for a in rows %}
+    <tr class="go">
+      <td><a class="ev" href="{{ u('/accounts/' ~ a.id) }}">{{ a.name }}</a>{% if a.standing and a.standing != 'ok' %} <span class="pill {{ 'bad' if a.standing == 'closed' else 'warn' }}">{{ a.standing|capitalize }}</span>{% endif %}
+        <small>{{ a.kind|capitalize }}{% if a.kind == 'exchange' %} · {{ commission_text(a.commission_bp) }} commission{% set pr = commission_promo(a) %}{% if pr %} · <span class="{{ 'warn' if pr.level in ('urgent', 'expired') else '' }}">{{ 'promotional rate expired ' ~ pr.date if pr.expired else 'promotional rate, expires ' ~ pr.date }}</span>{% endif %}{% endif %}{% if not a.active %} · inactive{% endif %}{% if a.last_activity %} · last activity {{ local(a.last_activity, '%-d %b') }}{% endif %}</small></td>
+      {% if a.kind == 'bank' %}
+      <td class="rt m3">funding source</td><td class="rt">{% if a.temporary_outstanding %}<span class="warn">{{ fmt(a.temporary_outstanding) }} temp out</span>{% else %}<span class="m3">—</span>{% endif %}</td><td class="rt m3">—</td><td class="m3">—</td>
+      {% else %}
+      <td class="rt">{{ money(a.balance) }}</td>
+      <td class="rt">{% if a.liability %}<span class="cl">{{ fmt(a.liability) }}</span>{% elif a.unsettled_stakes %}<span class="cb">{{ fmt(a.unsettled_stakes) }}</span>{% else %}<span class="m3">—</span>{% endif %}</td>
+      <td class="rt">{% if a.free_bets[0] %}{{ a.free_bets[0] }} free bet(s) {{ fmt(a.free_bets[1]) }}{% else %}<span class="m3">—</span>{% endif %}</td>
+      <td class="m2">{{ relative(a.last_check) if a.last_check else 'Never' }}</td>
+      {% endif %}
+    </tr>
+    {% else %}<tr><td colspan="5" class="m2">No accounts yet. Add one below.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  <p class="small"><a href="?show={{ '' if show == 'all' else 'all' }}">{{ 'Hide' if show == 'all' else 'Show' }} inactive accounts</a></p>
+</section>
+
+{% if transit %}
+<section class="panel" id="transit">
+  <h2>On its way to your bank</h2>
+  {% for t in transit %}
+  <div class="item">
+    <span class="item-main"><b>{{ fmt(t.amount_pence) }} from {{ t.from_name }} to {{ t.to_name }}</b>
+      <span class="muted small">Sent {{ local(t.at) }} · {{ relative(t.at) }}</span></span>
+    <form method="post" action="{{ u('/transfers/' ~ t.id ~ '/arrived') }}">{{ csrf_field() }}<button class="btn small">It arrived</button></form>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+{% if dues %}
+<section class="panel" id="borrowed">
+  <h2>Borrowed from your bank</h2>
+  {% for d in dues %}
+  <div class="item">
+    <span class="item-main"><b>{{ fmt(d.remaining) }} to {{ d.bank }}</b>
+      <span class="muted small">Sent to {{ d.account }} {{ local(d.sent_at, '%a %-d %b') }}{% if d.remaining != d.amount %} · {{ fmt(d.amount - d.remaining) }} of {{ fmt(d.amount) }} already returned{% endif %}</span>
+      <span class="small {{ 'warn-text' if d.due_at else 'muted' }}">{% if d.due_at %}Return by {{ local(d.due_at) }} · {{ relative(d.due_at) }}{% else %}No return date set{% endif %}</span></span>
+    <form method="post" action="{{ u('/transfers/' ~ d.transfer_id ~ '/due') }}" class="row-actions">{{ csrf_field() }}
+      <input type="datetime-local" name="due_at" value="{{ to_input(d.due_at) }}" aria-label="Return by">
+      <button class="btn small">{{ 'Change date' if d.due_at else 'Set date' }}</button></form>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+<section class="panel" id="transfers">
+  <div class="sh"><h2>Transfers</h2><span class="aside"><a class="small" href="?reversed={{ '' if show_reversed else '1' }}#transfers">{{ 'Hide' if show_reversed else 'Show' }} reversed</a></span></div>
+  <p class="small muted">Capital, never profit or loss. Correct a classification here; reversing one moves both balances back (kept in the history).</p>
+  {% for t in transfers %}
+  <div class="item{{ ' m3' if t.reversed }}">
+    <span class="item-main"><b>#{{ t.id }} · {{ t.amount }} {{ t["from"] }} → {{ t.to }}</b>
+      <span class="small muted">{{ t.when }} · {{ CAPITAL_LABELS.get(t.funding_type, t.funding_type) }}{% if t.repays_temporary_funding %} · repays {{ t.repays_temporary_funding }}{% endif %}{% if t.return_by %} · return by {{ t.return_by }}{% endif %}{% if t.reversed %} · reversed {{ t.reversed_at }}{% endif %}</span>
+      {% if t.notes %}<span class="small m2">{{ t.notes|truncate(140) }}</span>{% endif %}</span>
+    {% if not t.reversed %}
+    <details class="span-all"><summary class="small">Correct</summary>
+      <form method="post" action="{{ u('/ops/reclassify_transfer') }}" class="cols3">{{ csrf_field() }}
+        <input type="hidden" name="transfer_id" value="{{ t.id }}"><input type="hidden" name="next" value="/accounts#transfers">
+        <label>Type <select name="funding_type">{% for k in t.allowed %}<option value="{{ k }}" {{ 'selected' if k == t.funding_type }}>{{ CAPITAL_LABELS[k] }}</option>{% endfor %}</select></label>
+        <label>Why <input name="reason" placeholder="e.g. it was permanent bankroll"></label>
+        <button class="btn small">Save type</button></form>
+      <form method="post" action="{{ u('/ops/update_transfer') }}" class="cols3">{{ csrf_field() }}
+        <input type="hidden" name="transfer_id" value="{{ t.id }}"><input type="hidden" name="next" value="/accounts#transfers">
+        <label>When <input type="datetime-local" name="when" value="{{ t.at_input }}"></label>
+        <label>Notes <input name="notes" value="{{ t.notes or '' }}"></label>
+        <button class="btn small">Save</button></form>
+      <p class="small"><a class="danger" href="{{ u('/ops/reverse_transfer') }}?transfer_id={{ t.id }}&next=/accounts%23transfers">Reverse this transfer…</a></p>
+      <details><summary class="small">History</summary>{{ history_list(history_of('transfer', t.id)) }}</details>
+    </details>
+    {% endif %}
+  </div>
+  {% else %}<p class="muted small">No transfers yet.</p>{% endfor %}
+</section>
+
+<details class="panel" id="move" open><summary>Move money (deposit, withdrawal, transfer)</summary>
+  <form method="post" action="{{ u('/transfers') }}" class="cols3">{{ csrf_field() }}
+    <label>From <select name="from_id" required>{% for a in all_accounts %}<option value="{{ a.id }}" {{ 'selected' if pre.from == a.id }}>{{ a.name }} ({{ a.kind }})</option>{% endfor %}</select></label>
+    <label>To <select name="to_id" required>{% for a in all_accounts %}<option value="{{ a.id }}" {{ 'selected' if pre.to == a.id }}>{{ a.name }} ({{ a.kind }})</option>{% endfor %}</select></label>
+    <label>Amount £ <input name="amount" inputmode="decimal" value="{{ pre.amount }}" required></label>
+    <label>Type <select name="capital_type">
+      <option value="">Automatic</option>
+      {% for k, label in CAPITAL_LABELS.items() %}<option value="{{ k }}" {{ 'selected' if pre.type == k }}>{{ label }}</option>{% endfor %}</select></label>
+    <label>When <input type="datetime-local" name="at" value="{{ today }}"></label>
+    <label>Return by <small class="muted">temporary funding only</small><input type="datetime-local" name="due_at"></label>
+    <label class="check"><input type="checkbox" name="in_transit" value="1"> Withdrawal hasn’t reached the bank yet</label>
+    <label>Notes <input name="notes"></label>
+    <button class="btn primary">Record</button>
+  </form>
+  <p class="small muted"><b>Automatic:</b> bank → bookmaker/exchange is <i>temporary funding</i> (your money, not bankroll, not profit);
+    bookmaker/exchange → bank is a <i>return</i> of that funding, and anything above what is outstanding counts as a bankroll withdrawal.
+    Choose <i>Bankroll contribution</i> to add money long-term. Transfers never count as profit or loss.</p>
+</details>
+
+<details class="panel"><summary>Add an account</summary>
+  <form method="post" action="{{ u('/accounts') }}" class="cols3">{{ csrf_field() }}
+    <label>Name <input name="name" required placeholder="Betfred"></label>
+    <label>Type <select name="kind"><option value="bookmaker">Bookmaker</option><option value="exchange">Exchange</option><option value="bank">Bank / funding source</option></select></label>
+    <label>Commission % (exchanges) <input name="commission" inputmode="decimal" placeholder="2"></label>
+    <label>Money already there £ <input name="opening_balance" inputmode="decimal" placeholder="0"></label>
+    <label class="span2">Notes <input name="notes"></label>
+    <button class="btn">Add account</button>
+  </form>
+  <p class="small muted">Never store bookmaker passwords here.</p>
+</details>
+{% endblock %}

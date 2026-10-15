@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% from "macros.html" import money, pill, csrf_field, outcome_table, evidence_list with context %}
+{% block title %}{{ pos.event }} · Matched betting{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="{{ u('/positions') }}">Positions</a>{% if offer %} · <a href="{{ u('/offers/' ~ offer.id) }}">{{ offer.title }}</a>{% endif %}</p>
+<div class="page-head"><h1>{{ pos.event }}</h1>
+  <span class="aside"><a class="btn s" href="{{ u('/quick-add') }}?{{ same_again }}" title="Quick add with the same event, selection and accounts">Same again</a>
+  {% if pos.event_at %}<a class="btn s" href="{{ u('/calendar/position/' ~ pos.id ~ '.ics') }}">Add to Calendar</a>{% endif %}</span></div>
+<p class="note">{{ pos.selection or '—' }}{% if pos.market %} · {{ pos.market }}{% endif %} · {{ KIND_LABELS[pos.kind] }}{% if pos.event_at %} · {{ local(pos.event_at) }} ({{ relative(pos.event_at) }}){% endif %}</p>
+{% if pos.kind == 'qualifying' %}<p class="small"><b>Hedging:</b> {{ {'matched': 'Matched', 'intentionally_unhedged': 'Intentionally unhedged', 'pending': 'Hedge pending'}[hedging] }}{% if hedging == 'intentionally_unhedged' %} · Accepted exposure: {{ fmt(pos.accepted_exposure_pence) }}{% if pos.unhedged_reason %} · {{ pos.unhedged_reason }}{% endif %}{% endif %}</p>{% endif %}
+
+<div class="status n3">
+  <div class="stat hero">
+    {% if pnl is not none %}
+    <span class="k">Actual result</span><span class="v {{ 'gain' if pnl > 0 else ('loss' if pnl < 0 else '') }}">{{ fmt(pnl, signed=True) }}</span>
+    <span class="s">{{ pos.status|capitalize }}{% if pos.settled_at %} {{ local(pos.settled_at) }}{% endif %}{% if pos.expected_pnl_pence is not none %} · expected {{ fmt(pos.expected_pnl_pence, signed=True) }}{% endif %}</span>
+    {% else %}
+    <span class="k">{{ 'Open · unhedged by design' if hedging == 'intentionally_unhedged' else ('Incomplete' if legs|length and (legs|selectattr('side', 'equalto', 'back')|list|length == 0 or legs|selectattr('side', 'equalto', 'lay')|list|length == 0) else 'Open') }}</span>
+    <span class="v {{ 'gain' if (outcome[0] or 0) > 0 and (outcome[1] or 0) > 0 else ('loss' if outcome[0] is not none and [outcome[0], outcome[1]]|min < 0 else '') }}">{{ fmt([outcome[0], outcome[1]]|min, signed=True) if outcome[0] is not none else '—' }}</span>
+    <span class="s">the worst covered outcome · {% if pos.expected_pnl_pence is not none %}expected {{ fmt(pos.expected_pnl_pence, signed=True) }} when entered{% else %}no expected figure{% endif %}</span>
+    {% endif %}
+  </div>
+  <div class="stat"><span class="k">If the back wins{% if pos.multi_outcome %} (worst case){% endif %}</span><span class="v {{ 'gain' if (outcome[0] or 0) > 0 else ('loss' if (outcome[0] or 0) < 0 else '') }}">{{ fmt(outcome[0], signed=True) if outcome[0] is not none else '—' }}</span><span class="s">{{ pos.selection or 'the selection' }} wins</span></div>
+  <div class="stat"><span class="k">If the back loses</span><span class="v {{ 'gain' if (outcome[1] or 0) > 0 else ('loss' if (outcome[1] or 0) < 0 else '') }}">{{ fmt(outcome[1], signed=True) if outcome[1] is not none else '—' }}</span><span class="s">anything else happens</span></div>
+</div>
+
+{% if plan_of %}<p class="small">From <a href="{{ u('/plans/' ~ plan_of[0]) }}">bet plan #{{ plan_of[0] }}</a>.</p>{% endif %}
+{% if outcomes.rows and (outcomes.model != 'simple two-way (every lay assumed on the same selection as the back)' or legs|length > 2) %}
+<section class="first">
+  <div class="sh"><h2>Outcomes</h2><span class="aside small">{{ outcomes.model }}{% if outcomes.exchange_liability_held %} · exchange holds {{ outcomes.exchange_liability_held }}{% endif %}</span></div>
+  {{ outcome_table(outcomes) }}
+</section>
+{% elif outcomes.model == 'invalid' %}<p class="flash err">{{ outcomes.note }}</p>{% endif %}
+{% if pos.status == 'open' and legs %}
+<section class="first" id="settle">
+  <div class="sh"><h2>Settle</h2><span class="aside">Standard returns and the exchange’s commission</span></div>
+  {% if pos.multi_outcome %}<p class="note">These bets cover different selections. Settle each bet below using its actual result.</p>{% else %}
+  <form method="post" action="{{ u('/positions/' ~ pos.id ~ '/settle') }}" class="settle-big" data-confirm="Settle every bet in this position?">
+    {{ csrf_field() }}
+    <button class="btn" name="outcome" value="back_won"><span>Back selection won</span><b class="{{ 'gain' if (outcome[0] or 0) > 0 else ('loss' if (outcome[0] or 0) < 0 else '') }}">{{ fmt(outcome[0], signed=True) if outcome[0] is not none else '' }}</b></button>
+    <button class="btn" name="outcome" value="back_lost"><span>Back selection lost</span><b class="{{ 'gain' if (outcome[1] or 0) > 0 else ('loss' if (outcome[1] or 0) < 0 else '') }}">{{ fmt(outcome[1], signed=True) if outcome[1] is not none else '' }}</b></button>
+    <button class="btn" name="outcome" value="void"><span>Void</span><b class="m2">stakes back</b></button>
+  </form>
+  {% endif %}
+  <p class="small muted">For dead heats, cash-outs or odd settlements use “Settle this bet” on a bet below.</p>
+</section>
+{% endif %}
+
+<section class="{{ '' if pos.status == 'open' and legs else 'first' }}">
+  <div class="sh"><h2>Bets</h2><span class="n">{{ legs|length }}</span></div>
+  {% for l in legs %}
+  <article class="leg {{ l.side }}">
+    <div class="leg-head">
+      <div class="odd {{ 'lay' if l.side == 'lay' else ('free' if l.free_bet_id else 'back') }}"><div class="o">{{ l.odds }}</div><div class="s">{{ fmt(l.stake_pence) }}{{ ' free' if l.free_bet_id else '' }}</div></div>
+      <div class="leg-info">
+        <h3>{{ l.side|capitalize }} · {{ l.account }}{% if l.free_bet_id %} {{ pill('Free bet ' ~ (l.free_bet_kind or '')|upper, 'info') }}{% endif %}</h3>
+        <p>{% if l.side == 'lay' %}Liability {{ fmt(l.liability) }} · commission {{ commission_text(l.commission_bp) }} · {% endif %}placed {{ local(l.placed_at) }}{% if l.external_ref %} · ref {{ l.external_ref }}{% endif %} · {{ l.source }}</p>
+      </div>
+      <div class="ac">{{ pill(l.result|capitalize, 'ok' if l.result == 'won' else ('bad' if l.result == 'lost' else ('warn' if l.result == 'pending' else ''))) }}
+        {% if l.result != 'pending' %}<div class="worth"><b>{{ fmt(l.settled_amount_pence, signed=True) }}</b><small>{{ local(l.settled_at, '%-d %b %H:%M') }}{% if l.commission_paid_pence %} · comm. {{ fmt(l.commission_paid_pence) }}{% endif %}</small></div>{% endif %}</div>
+    </div>
+    {% if l.token_options is defined %}
+    <details{{ ' open' if l.token_options }}><summary>Link the free bet it used</summary>
+      {% if l.token_options %}
+      <form method="post" action="{{ u('/legs/' ~ l.id ~ '/free-bet') }}" class="cols3" data-confirm="Link this free bet? Its cash stake is withdrawn (a free bet is not cash) and the link is recorded in the audit trail.">
+        {{ csrf_field() }}
+        <label>Free bet <select name="free_bet_id">{% for t in l.token_options %}<option value="{{ t.id }}">#{{ t.id }} · {{ fmt(t.face_value_pence) }} {{ t.kind|upper }}{% if t.offer_title %} · {{ t.offer_title }}{% endif %} · {{ 'marked used by hand' if t.status == 'used' else 'available' }}{% if t.expires_at %} · expires {{ local(t.expires_at) }}{% endif %}</option>{% endfor %}</select></label>
+        <label>Note <input name="note" placeholder="e.g. historical bet from 29 Sept"></label>
+        <button class="btn">Link free bet</button>
+      </form>
+      {% else %}<p class="small muted">No unlinked {{ fmt(l.stake_pence) }} free bet of this type at {{ l.account }}. Add it under Free bets first.</p>{% endif %}
+    </details>
+    {% endif %}
+    <details><summary>Settle this bet</summary>
+      <form method="post" action="{{ u('/legs/' ~ l.id ~ '/settle') }}" class="cols3">
+        {{ csrf_field() }}
+        <label>Result <select name="result">
+          {% for r in ('won', 'lost', 'void', 'cashout', 'manual', 'pending') %}<option value="{{ r }}" {{ 'selected' if l.result == r }}>{{ {'won': 'Won', 'lost': 'Lost', 'void': 'Void / refunded', 'cashout': 'Cashed out', 'manual': 'Other (enter amount)', 'pending': 'Reopen (unsettled)'}[r] }}</option>{% endfor %}
+        </select></label>
+        <label>{{ 'Amount credited £' if l.side == 'back' else 'Net amount £ (+ won, − lost)' }} <input name="amount" inputmode="decimal" placeholder="standard"></label>
+        {% if l.side == 'lay' %}<label>Commission paid £ <input name="commission_paid" inputmode="decimal" placeholder="standard"></label>{% endif %}
+        <label>Settled at <input type="datetime-local" name="settled_at"></label>
+        <label>Note <input name="note"></label>
+        <button class="btn">Save result</button>
+      </form>
+    </details>
+    <details><summary>Move to another position</summary>
+      <form method="post" action="{{ u('/legs/' ~ l.id ~ '/move') }}" class="cols3" data-confirm="Move this bet? Its stake and any settlement move with it (the old entries are kept as replaced).">
+        {{ csrf_field() }}
+        <label>Move to <select name="target">
+          <option value="new">A new position with the same details</option>
+          {% for o in others %}<option value="{{ o.id }}">#{{ o.id }} {{ o.event }}{% if o.selection %} · {{ o.selection }}{% endif %} ({{ o.status }})</option>{% endfor %}
+        </select></label>
+        <label>Why <input name="note" required placeholder="e.g. lay recorded on the wrong match"></label>
+        <button class="btn">Move bet</button>
+      </form>
+    </details>
+    <details><summary>Edit bet</summary>
+      <form method="post" action="{{ u('/legs/' ~ l.id) }}" class="cols3">
+        {{ csrf_field() }}
+        <label>Stake £ <input name="stake" inputmode="decimal" value="{{ plain(l.stake_pence) }}"></label>
+        <label>Odds <input name="odds" inputmode="decimal" value="{{ l.odds }}"></label>
+        {% if l.side == 'lay' %}<label>Commission % <input name="commission" inputmode="decimal" value="{{ (l.commission_bp / 100)|string }}"></label>{% endif %}
+        <label>Placed at <input type="datetime-local" name="placed_at" value="{{ to_input(l.placed_at) }}"></label>
+        <label>Reference <input name="external_ref" value="{{ l.external_ref }}"></label>
+        <label>Why <input name="note" placeholder="e.g. typo in stake"></label>
+        <button class="btn">Save changes</button>
+      </form>
+      <form method="post" action="{{ u('/legs/' ~ l.id ~ '/delete') }}" data-confirm="Remove this bet? Its ledger entries are withdrawn (kept in history).">
+        {{ csrf_field() }}<input type="hidden" name="note" value="removed from position page"><button class="btn danger small">Remove bet</button>
+      </form>
+    </details>
+  </article>
+  {% else %}<div class="empty"><b>No bets recorded yet</b>Add the back and the lay below.</div>{% endfor %}
+
+  {% if pos.status == 'open' %}
+  <details class="add-leg"><summary>Add a bet (lay, partial lay, extra back…)</summary>
+    <form method="post" action="{{ u('/positions/' ~ pos.id ~ '/legs') }}" class="cols3">
+      {{ csrf_field() }}
+      <label>Side <select name="side"><option value="lay">Lay</option><option value="back">Back</option></select></label>
+      <label>Account <select name="account_id">{% for a in accounts %}<option value="{{ a.id }}">{{ a.name }} ({{ a.kind }})</option>{% endfor %}</select></label>
+      <label>Stake £ <input name="stake" inputmode="decimal" required></label>
+      <label>Odds <input name="odds" inputmode="decimal" required></label>
+      <label>Commission % <input name="commission" inputmode="decimal" placeholder="exchange default"></label>
+      <label>Reference <input name="external_ref"></label>
+      <button class="btn">Add bet</button>
+    </form>
+    {% for a in accounts %}{% set pr = commission_promo(a) %}{% if pr and pr.expired %}<p class="small warn-text">{{ pr.warning }}. A blank Commission uses it.</p>{% endif %}{% endfor %}
+  </details>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>Ledger effect</h2>
+  <table class="table">
+    <thead><tr><th>When</th><th>Account</th><th>Type</th><th class="num">Amount</th></tr></thead>
+    <tbody>
+    {% for e in entries %}
+    <tr class="{{ 'superseded' if e.superseded_at }}"><td>{{ local(e.at) }}</td><td>{{ e.account }}</td>
+      <td>{{ CATEGORY_LABELS[e.category] }}{% if e.superseded_at %} <span class="small muted">(replaced: {{ e.supersede_note }})</span>{% endif %}</td>
+      <td class="num">{{ money(e.amount_pence, True) }}</td></tr>
+    {% else %}<tr><td colspan="4" class="muted">No money has moved yet.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{% if others %}
+<details class="panel"><summary>Merge into another position</summary>
+  <form method="post" action="{{ u('/positions/' ~ pos.id ~ '/merge') }}" class="cols3" data-confirm="Move every bet into the chosen position and remove this one?">
+    {{ csrf_field() }}
+    <label>Merge into <select name="target">{% for o in others %}<option value="{{ o.id }}">#{{ o.id }} {{ o.event }}{% if o.selection %} · {{ o.selection }}{% endif %} ({{ o.status }})</option>{% endfor %}</select></label>
+    <label>Why <input name="note" required placeholder="e.g. same bet recorded twice"></label>
+    <button class="btn">Merge</button>
+  </form>
+  <p class="small muted">Every bet moves with its money; this position is then removed (kept in the audit trail).</p>
+</details>
+{% endif %}
+<section class="panel">
+  <h2>Correct this position</h2>
+  <p class="row-actions">
+    {% if pos.status != 'open' %}<a class="btn small" href="{{ u('/ops/reopen_position') }}?position_id={{ pos.id }}&next=/positions/{{ pos.id }}">Reopen…</a>{% endif %}
+    {% if pos.status != 'void' and legs %}<a class="btn small" href="{{ u('/ops/void_position') }}?position_id={{ pos.id }}&next=/positions/{{ pos.id }}">Void every bet…</a>{% endif %}
+    <a class="btn small danger" href="{{ u('/ops/delete_position') }}?position_id={{ pos.id }}&next=/positions">Delete…</a>
+  </p>
+  <p class="small muted">Each shows exactly what changes (before → after, realised profit) before you confirm. Settled history is never erased: withdrawn entries stay in the audit trail.</p>
+</section>
+<details class="panel"><summary>Edit position details</summary>
+  <form method="post" action="{{ u('/positions/' ~ pos.id) }}" class="cols2">
+    {{ csrf_field() }}
+    <label>Event <input name="event" value="{{ pos.event }}" required></label>
+    <label>Selection <input name="selection" value="{{ pos.selection }}"></label>
+    <label>Market <input name="market" value="{{ pos.market }}"></label>
+    <label>Starts <input type="datetime-local" name="event_at" value="{{ to_input(pos.event_at) }}"></label>
+    <label>Type <select name="kind">{% for k, label in KIND_LABELS.items() %}<option value="{{ k }}" {{ 'selected' if pos.kind == k }}>{{ label }}</option>{% endfor %}</select></label>
+    <label>Offer <select name="offer_id"><option value="">None</option>{% for o in offers %}<option value="{{ o.id }}" {{ 'selected' if pos.offer_id == o.id }}>{{ o.title }}</option>{% endfor %}</select></label>
+    <label class="span2">Notes <textarea name="notes" rows="2">{{ pos.notes }}</textarea></label>
+    <button class="btn">Save</button>
+  </form>
+  <form method="post" action="{{ u('/positions/' ~ pos.id ~ '/delete') }}" class="row-actions" data-confirm="Remove this whole position and withdraw its ledger entries?">
+    {{ csrf_field() }}<input name="note" placeholder="Reason (required)" required><button class="btn danger small">Remove position</button>
+  </form>
+</details>
+
+<section><div class="sh"><h2>Evidence</h2></div>{{ evidence_list(evidence_items, 'position', pos.id, '/positions/' ~ pos.id) }}</section>
+<details class="panel"><summary>History ({{ audit|length }})</summary>
+  <ul class="audit">{% for a in audit %}<li><span class="muted small">{{ local(a.at) }}</span> {{ a.entity }} #{{ a.entity_id }} {{ a.action }} <span class="small m2">· {{ a.actor or 'earlier' }}</span>{% if a.note %} — {{ a.note }}{% endif %}
+    {% if a.before_json or a.after_json %}<br><code class="small">{{ a.before_json or '' }} → {{ a.after_json or '' }}</code>{% endif %}</li>{% endfor %}</ul>
+</details>
+{% endblock %}

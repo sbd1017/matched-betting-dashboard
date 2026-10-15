@@ -1,0 +1,45 @@
+[Unit]
+Description=Matched betting ChatGPT plugin (MCP, https://example.com/bets/mcp)
+Documentation=file:///opt/matched-betting/docs/chatgpt-plugin.md
+After=network.target matched-betting.service
+
+[Service]
+Type=simple
+# Its own user: it cannot read the betting database (var/ is 0700 bets); it only talks to
+# the Assistant Intake API on 127.0.0.1:8760 with its scoped token.
+User=bets-mcp
+Group=bets-mcp
+WorkingDirectory=/opt/matched-betting
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=BETS_MCP_PORT=8762
+ExecStart=/opt/matched-betting/.venv-mcp/bin/python -m bets_mcp.server
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/matched-betting/mcp-var
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# Only nginx talks to it. Outbound it calls the betting app on 127.0.0.1 (Upstream refuses any other base)
+# and, for CIMD, fetches only https://chatgpt.com/oauth/[<callback_id>/]client.json (bets_mcp/cimd.py).
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+MemoryMax=256M
+TasksMax=32
+
+[Install]
+WantedBy=multi-user.target

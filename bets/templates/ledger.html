@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% from "macros.html" import money, csrf_field with context %}
+{% block title %}Ledger · Matched betting{% endblock %}
+{% block content %}
+<h1 class="page-title">Ledger</h1>
+<details class="panel filters" open><summary>Filter</summary>
+  <form method="get" class="cols3">
+    <label>Account <select name="account"><option value="">All</option>{% for a in accounts %}<option value="{{ a.id }}" {{ 'selected' if p.account == a.id|string }}>{{ a.name }}</option>{% endfor %}</select></label>
+    <label>Type <select name="category"><option value="">All</option>{% for k, label in CATEGORY_LABELS.items() %}<option value="{{ k }}" {{ 'selected' if p.category == k }}>{{ label }}</option>{% endfor %}</select></label>
+    <label>Class <select name="class"><option value="">All</option><option value="capital" {{ 'selected' if p['class'] == 'capital' }}>Capital (not profit)</option><option value="stake" {{ 'selected' if p['class'] == 'stake' }}>Stakes</option><option value="pnl" {{ 'selected' if p['class'] == 'pnl' }}>Profit / loss</option></select></label>
+    <label>From <input type="date" name="from" value="{{ p['from'] or '' }}"></label>
+    <label>To <input type="date" name="to" value="{{ p.to or '' }}"></label>
+    <label>Search <input name="q" value="{{ p.q or '' }}"></label>
+    <label>Min £ <input name="min" inputmode="decimal" value="{{ p.min or '' }}"></label>
+    <label>Max £ <input name="max" inputmode="decimal" value="{{ p.max or '' }}"></label>
+    <label>Position # <input name="position" inputmode="numeric" value="{{ p.position or '' }}"></label>
+    <label class="check"><input type="checkbox" name="superseded" value="1" {{ 'checked' if p.superseded }}> Include replaced/reversed</label>
+    <button class="btn">Apply</button>
+  </form>
+  <p class="small"><a href="{{ u('/export/ledger.csv') }}">Download CSV</a></p>
+</details>
+<section class="panel">
+  <p class="split sum"><span>{{ rows|length }} entr{{ 'y' if rows|length == 1 else 'ies' }}</span>{{ money(total, True) }}</p>
+  <table class="table ledger">
+    <thead><tr><th>When</th><th>Account</th><th>Type</th><th>Detail</th><th class="num">Amount</th>{% if rows and rows[0].running is defined %}<th class="num">Balance</th>{% endif %}<th></th></tr></thead>
+    <tbody>
+    {% for e in rows %}
+    <tr class="{{ 'superseded' if e.superseded_at }}">
+      <td>{{ local(e.at) }}</td><td>{{ e.account }}</td>
+      <td>{{ CATEGORY_LABELS[e.category] }}<br><span class="small muted">{{ {'capital': 'capital', 'stake': 'stake', 'pnl': 'P&L'}[e['class']] }}</span></td>
+      <td class="small">{{ e.description }}{% if e.position_id %} <a href="{{ u('/positions/' ~ e.position_id) }}">#{{ e.position_id }}</a>{% endif %}{% if e.superseded_at %}<br><span class="muted">replaced {{ local(e.superseded_at) }}: {{ e.supersede_note }}</span>{% endif %}</td>
+      <td class="num">{{ money(e.amount_pence, True) }}</td>
+      {% if e.running is defined %}<td class="num">{{ fmt(e.running) }}</td>{% endif %}
+      <td>{% if not e.posting_key and not e.superseded_at %}
+        <details><summary class="small">Reverse</summary><form method="post" action="{{ u('/ledger/' ~ e.id ~ '/reverse') }}">{{ csrf_field() }}<input name="note" placeholder="Reason" required><button class="btn small danger">Reverse</button></form></details>{% endif %}</td>
+    </tr>
+    {% else %}<tr><td colspan="7" class="muted">No entries match.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</section>
+<details class="panel"><summary>Add an entry (reward, bonus, adjustment)</summary>
+  <form method="post" action="{{ u('/ledger') }}" class="cols3">{{ csrf_field() }}
+    <label>Account <select name="account_id" required>{% for a in betting_accounts %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}</select></label>
+    <label>Type <select name="category">{% for c in manual %}<option value="{{ c }}">{{ CATEGORY_LABELS[c] }}</option>{% endfor %}</select></label>
+    <label>Amount £ (− for a deduction) <input name="amount" inputmode="decimal" required></label>
+    <label>When <input type="datetime-local" name="at"></label>
+    <label>Offer <select name="offer_id"><option value="">None</option>{% for o in offers %}<option value="{{ o.id }}">{{ o.title }}</option>{% endfor %}</select></label>
+    <label>Description <input name="description" required></label>
+    <button class="btn">Add entry</button>
+  </form>
+  <p class="small muted">Deposits and withdrawals are transfers (Accounts page), never entries here, so they cannot be mistaken for profit.</p>
+</details>
+{% endblock %}

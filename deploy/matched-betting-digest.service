@@ -1,0 +1,19 @@
+[Unit]
+Description=Send the matched betting morning summary to Telegram
+ConditionPathExists=/opt/matched-betting/var/telegram.json
+
+[Service]
+Type=oneshot
+User=bets
+Group=bets
+WorkingDirectory=/opt/matched-betting
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/matched-betting/.venv/bin/python -m bets.cli digest --send
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/matched-betting/var
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# Unlike the web service, this unit may reach the internet: it only posts to api.telegram.org.

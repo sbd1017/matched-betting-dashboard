@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% from "macros.html" import pill, csrf_field with context %}
+{% block title %}Bet plans · Matched betting{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="{{ u('/operations') }}">Operations</a></p>
+<div class="page-head"><h1>Bet plans</h1><span class="aside"><a class="btn k" href="#new">New plan</a></span></div>
+<p class="note">A plan is a matched bet before (and while) it is placed: stakes, lay, outcomes, checks and funding. It holds no money until bets are recorded as placed.</p>
+<nav class="tabs"><a href="?show=active" class="{{ 'active' if show == 'active' }}">Live</a><a href="?show=all" class="{{ 'active' if show == 'all' }}">All</a></nav>
+<section class="first">
+  {% for p in rows %}
+  <a class="row" href="{{ u('/plans/' ~ p.id) }}">
+    <div class="kind {{ 'k-red' if p.status in ('bookmaker_placed', 'exchange_partially_matched') else ('k-blue' if p.status == 'ready_to_place' else 'k-ink') }}"><b>#{{ p.id }}</b><span>{{ nice_time(p.event_at, '%a %-d %b') }}</span></div>
+    <div><h3>{{ p.event }}{% if p.selection %} · {{ p.selection }}{% endif %}</h3><p>{{ p.status_title }} · {{ KIND_LABELS[p.type] }}{% if p.free_bet %} · free bet #{{ p.free_bet.id }}{% endif %}{% if p.liability %} · liability {{ p.liability }}{% endif %}</p></div>
+    <div class="ac"><div class="worth"><b>{{ p.locked or '—' }}</b><small>{% if p.retention_pct is not none %}{{ p.retention_pct }}% · {{ (p.rating or '').replace('_', ' ') }}{% else %}locked in{% endif %}</small></div></div>
+  </a>
+  {% else %}<div class="empty"><b>No plans</b>Ask the assistant to plan a conversion, or add one below.</div>{% endfor %}
+</section>
+<details class="panel" id="new" {{ 'open' if not rows }}><summary>New plan</summary>
+  <form method="post" action="{{ u('/ops/create_bet_plan') }}" class="cols3">{{ csrf_field() }}
+    <input type="hidden" name="next" value="/plans">
+    <label>Event <input name="event" required placeholder="Tottenham v Coventry City"></label>
+    <label>Selection <input name="selection" placeholder="Coventry City"></label>
+    <label>Starts <input type="datetime-local" name="event_time"></label>
+    <label>Type <select name="kind">{% for k in ('qualifying', 'free_bet_snr', 'free_bet_sr') %}<option value="{{ k }}">{{ KIND_LABELS[k] }}</option>{% endfor %}</select></label>
+    <label>Bookmaker <select name="bookmaker">{% for a in bookmakers %}<option>{{ a.name }}</option>{% endfor %}</select></label>
+    <label>Back stake £ <input name="back_stake" inputmode="decimal" placeholder="free bet: its value"></label>
+    <label>Back odds <input name="back_odds" inputmode="decimal" required></label>
+    <label>Exchange <select name="exchange">{% for a in exchanges %}<option>{{ a.name }}</option>{% endfor %}</select></label>
+    <label>Lay odds <input name="lay_odds" inputmode="decimal" required></label>
+    <label>Free bet <select name="free_bet_id"><option value="">Choose automatically</option>{% for f in free_bets %}<option value="{{ f.id }}">#{{ f.id }} {{ f.account }} {{ fmt(f.face_value_pence) }} {{ f.kind|upper }}{% if f.expires_at %} · {{ local(f.expires_at, '%-d %b') }}{% endif %}</option>{% endfor %}</select></label>
+    <label>Offer <select name="offer_id"><option value="">None</option>{% for o in offers %}<option value="{{ o.id }}">{{ o.title }}</option>{% endfor %}</select></label>
+    <label>Market <input name="market" placeholder="Match Odds"></label>
+    <button class="btn">Create plan</button>
+  </form>
+  <p class="small muted">Lay stakes are calculated by the server. Multi-outcome hedges (several lays, correct scores) are easiest through the assistant.</p>
+</details>
+{% endblock %}

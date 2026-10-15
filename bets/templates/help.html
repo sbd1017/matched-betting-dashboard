@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Help · Matched betting{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Help</h1></div>
+
+<section class="first">
+  <div class="sh"><h2>The figures</h2></div>
+  <dl class="glossary">
+    <dt>Realised profit</dt><dd>Everything settled bets, rewards and adjustments have made or lost. Stakes count once their bet settles. Deposits and withdrawals never count.</dd>
+    <dt>Still to come</dt><dd>What you should still make: the worse outcome of each open position, free bets you hold valued at your retention, and rewards you've qualified for but not received.</dd>
+    <dt>Retention</dt><dd>The share of a free bet's face value you actually kept, from your own settled free-bet positions (a typical figure is used until you've settled three).</dd>
+    <dt>Available to bet</dt><dd>Bookmaker balances plus exchange balances, minus the lay liability the exchanges are holding.</dd>
+    <dt>Lay liability held</dt><dd>What an exchange holds back while a lay is open: what you'd pay if the selection wins. It isn't spent; it comes back when the lay settles.</dd>
+    <dt>Stakes in play</dt><dd>Cash back stakes at bookmakers on bets that haven't settled yet.</dd>
+    <dt>Temporary funding</dt><dd>Money moved from your bank that has to go back. Returns repay the oldest first; anything returned above what's outstanding counts as a bankroll withdrawal.</dd>
+    <dt>Your capital</dt><dd>Money that is yours in the bankroll: opening balances and bankroll contributions, less bankroll withdrawals.</dd>
+    <dt>Reconciliation</dt><dd>The difference between the app's balance and the real one when you check a balance. It's recorded openly and counts in profit or loss.</dd>
+    <dt>SNR / SR</dt><dd>Free bet with stake not returned (the usual kind) / stake returned.</dd>
+    <dt>Qualifying loss</dt><dd>The small loss you accept on the bet that unlocks an offer's reward.</dd>
+  </dl>
+</section>
+
+<section>
+  <div class="sh"><h2>Statuses</h2></div>
+  <dl class="glossary">
+    <dt>Offer</dt><dd>Not started → Qualifying (a bet is recorded) → Awaiting reward (the qualifier settled) → Reward received (free bets added) → Converting (one is used) → Complete (none left to use). The app moves offers on by itself; you can still set the status by hand.</dd>
+    <dt>Position</dt><dd>Open until every bet in it is settled; Incomplete while it has a back but no lay (or the other way round); Void when every bet was voided.</dd>
+    <dt>Bookmaker standing</dt><dd>Fine, Restricted (gubbed: stakes limited or promotions removed) or Closed. Restricted accounts are flagged when you record a bet there.</dd>
+  </dl>
+</section>
+
+<section>
+  <div class="sh"><h2>Fixing things</h2></div>
+  <ul class="list">
+    <li><b>Undo</b>: after settling, adding free bets or a reward, a transfer, an entry or balance adjustments, the message at the top has an Undo button for 30 minutes.</li>
+    <li><b>Issues</b>: the Issues page lists everything that needs putting right, each with a link to fix it.</li>
+    <li><b>Wrong position</b>: on the position page, a bet can be moved to another position or a new one, and two positions can be merged.</li>
+    <li><b>Balances</b>: Accounts → Check balances, then tick the ones that match or type the real balance.</li>
+    <li><b>Nothing is ever deleted</b>: changes supersede the old ledger entries, which stay in the history and the audit trail.</li>
+  </ul>
+</section>
+
+<section>
+  <div class="sh"><h2>Telegram</h2>{% if telegram %}<span class="pill ok">Set up</span>{% else %}<span class="pill">Not set up</span>{% endif %}</div>
+  <p>A morning summary at 08:30 (what to do today, kick-offs, profit) and alerts when a free bet is about to expire, a result needs entering or money is due back. Set up on the Pi with <code>scripts/telegram-setup.sh</code>; messages go only to the chat you give it.</p>
+</section>
+
+<section>
+  <div class="sh"><h2>Keyboard</h2></div>
+  <ul class="list">
+    <li><kbd>C</kbd> lay calculator · <kbd>/</kbd> or <kbd>⌘K</kbd> search · <kbd>Esc</kbd> close the calculator</li>
+  </ul>
+</section>
+{% endblock %}

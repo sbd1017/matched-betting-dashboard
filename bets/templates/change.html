@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% from "macros.html" import pill, csrf_field with context %}
+{% block title %}{{ title }} · Matched betting{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="{{ u(back_to) }}">Back</a>{% if mode == 'held' %} · <a href="{{ u('/imports') }}">Imports</a>{% endif %}</p>
+<div class="page-head"><h1>{{ title }}</h1>
+  <span class="aside">{{ pill(LEVEL_TITLES.get(r.level, r.level), 'bad' if r.level == 'destructive_delete' else ('warn' if r.level == 'financial_reverse' else '')) }}</span></div>
+{% if mode == 'held' %}<p class="note">Requested by the Matched Betting Assistant {{ local(op.created_at) }}{% if op.reason %} · “{{ op.reason }}”{% endif %}. {{ op.hold_reason }}. It is checked again against your records when you confirm.</p>{% endif %}
+<p class="note"><b>{{ r.summary }}</b></p>
+
+{% if r.status == 'blocked' %}
+<div class="flash err" role="alert"><b>Can’t do this:</b> {{ r.reason }}</div>
+{% elif r.status == 'already_done' %}
+<div class="flash ok">Already done: nothing needs to change.</div>
+{% endif %}
+{% if r.dependencies %}<section class="first"><div class="sh"><h2>Linked records</h2></div>
+  <ul class="checks">{% for d in r.dependencies %}<li class="warn">{{ d }}</li>{% endfor %}</ul></section>{% endif %}
+
+{% if r.effects or r.warnings %}
+<section class="first"><div class="sh"><h2>What this does</h2></div>
+  <ul class="checks">{% for e in r.effects %}<li class="ok">{{ e }}</li>{% endfor %}{% for w in r.warnings %}<li class="warn">{{ w }}</li>{% endfor %}</ul>
+</section>
+{% endif %}
+
+{% if r.records %}
+<section>
+  <div class="sh"><h2>Before → after</h2></div>
+  {% for rec in r.records %}
+  {% set rows = diffrows(rec.before, rec.after) if rec.after is defined else [] %}
+  <h3 class="small">{{ rec.record }}</h3>
+  {% if rows %}
+  <div class="tw"><table class="table change-table"><thead><tr><th>Field</th><th>Before</th><th>After</th></tr></thead>
+    <tbody>{% for f, b, a in rows %}<tr><td>{{ f }}</td><td class="m2">{{ b }}</td><td><b>{{ a }}</b></td></tr>{% endfor %}</tbody></table></div>
+  {% else %}<p class="small muted">{{ 'No change to this record.' if rec.after is defined else 'Unchanged.' }}</p>{% endif %}
+  {% endfor %}
+</section>
+{% endif %}
+{% if r.totals %}
+<section>
+  <div class="sh"><h2>Dashboard figures</h2></div>
+  <div class="tw"><table class="table change-table"><thead><tr><th>Figure</th><th class="num">Before</th><th class="num">After</th></tr></thead>
+    <tbody>{% for k, v in r.totals.items() %}<tr><td>{{ k.replace('_', ' ')|capitalize }}</td><td class="num m2">{{ v.before }}</td><td class="num"><b>{{ v.after }}</b></td></tr>{% endfor %}</tbody></table></div>
+</section>
+{% endif %}
+
+{% if mode == 'preview' and r.status == 'preview' %}
+<form method="post" action="{{ u('/ops/' ~ name) }}" class="panel">{{ csrf_field() }}
+  {% for k, v in params.items() if k != 'reason' %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+  <input type="hidden" name="next" value="{{ back_to }}">
+  <label>Why{{ '' if r.level == 'safe_edit' else ' (required)' }} <input name="reason" value="{{ params.reason or '' }}" {{ 'required' if r.level != 'safe_edit' }} maxlength="300"></label>
+  <p class="row-actions"><button class="btn {{ 'red' if r.level == 'destructive_delete' else 'k' }}">{{ CONFIRM_LABELS.get(name, 'Confirm') }}</button>
+    <a class="btn" href="{{ u(back_to) }}">Cancel</a></p>
+  <p class="small muted">Recorded in the audit trail as your change{% if r.level != 'safe_edit' %}; nothing is erased: withdrawn entries stay in the history{% endif %}.</p>
+</form>
+{% elif mode == 'held' and op.status == 'held' %}
+<div class="row-actions panel">
+  <form method="post" action="{{ u('/changes/' ~ op.public_id ~ '/confirm') }}">{{ csrf_field() }}<button class="btn {{ 'red' if r.level == 'destructive_delete' else 'k' }}">Confirm</button></form>
+  <form method="post" action="{{ u('/changes/' ~ op.public_id ~ '/reject') }}">{{ csrf_field() }}<button class="btn">Reject</button></form>
+</div>
+{% elif mode == 'held' %}
+<p class="muted">This change was {{ op.status.replace('_', ' ') }}{% if op.decided_at %} {{ local(op.decided_at) }}{% endif %}.</p>
+{% endif %}
+{% endblock %}

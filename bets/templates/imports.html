@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% from "macros.html" import pill, csrf_field with context %}
+{% block title %}Imports · Matched betting{% endblock %}
+{% block content %}
+<h1 class="page-title">Imports</h1>
+{% if trusted.enabled %}<p class="flash ok small"><b>Trusted Assistant mode is ON</b> for {% for k in trusted.kinds %}{{ KIND_TITLES[k] }}{{ ', ' if not loop.last }}{% endfor %}: complete, unremarkable entries from the Matched Betting Assistant are confirmed automatically; anything else waits here. <a href="{{ u('/settings') }}#trusted">Settings</a></p>{% endif %}
+{% if batch %}
+<section class="panel">
+  {% if batch.rolled_back %}
+  <p class="flash err"><b>Nothing was confirmed.</b> Confirm selected records all or nothing, and these could not be confirmed — fix or deselect them, or use Confirm all valid:</p>
+  {% else %}
+  <p class="flash ok">{{ batch.results|selectattr('ok')|list|length }} confirmed{% if batch.results|rejectattr('ok')|list %}, {{ batch.results|rejectattr('ok')|list|length }} left pending{% endif %}.</p>
+  {% endif %}
+  <ul class="checks">{% for r in batch.results %}<li class="{{ 'ok' if r.ok and not batch.rolled_back else 'bad' }}"><a href="{{ u('/imports/' ~ r.id) }}">{{ r.title }}</a> <span class="muted small">{{ KIND_TITLES[r.kind] }}{% if not r.ok %} — {{ r.message }}{% elif batch.rolled_back %} — would have been confirmed{% endif %}</span></li>{% endfor %}</ul>
+</section>
+{% endif %}
+{% if held_changes %}
+<section class="panel" id="changes">
+  <h2>Changes from the assistant waiting for you</h2>
+  {% for c in held_changes %}
+  <div class="item"><a class="item-main" href="{{ u('/changes/' ~ c.public_id) }}"><b>{{ c.summary }}</b>
+    <span class="muted small">{{ LEVEL_TITLES.get(c.level, c.level) }} · {{ local(c.created_at) }}{% if c.reason %} · “{{ c.reason }}”{% endif %}</span></a>
+    <a class="btn small" href="{{ u('/changes/' ~ c.public_id) }}">Review</a></div>
+  {% endfor %}
+</section>
+{% endif %}
+<section class="panel">
+  {% if pending %}
+  <form method="post" action="{{ u('/imports/bulk') }}" id="bulk" class="row-actions">{{ csrf_field() }}
+    <label class="check"><input type="checkbox" data-select-all> Select all pending</label>
+    <button class="btn primary" name="action" value="selected" data-confirm="Confirm the selected entries? Either all of them are recorded or none.">Confirm selected</button>
+    <button class="btn" name="action" value="all_valid" data-confirm="Confirm every pending entry that can be confirmed now? Anything else stays pending.">Confirm all valid</button>
+  </form>
+  <p class="small muted">Confirmed in dependency order: accounts, offers, free bets, transfers (deposits before returns), positions, balance checks, notes. Each entry is still checked exactly as when you confirm it on its own.</p>
+  {% endif %}
+  {% for r in rows %}
+  <div class="item">
+    {% if r.status == 'needs_confirmation' %}<input type="checkbox" class="pick" name="ids" value="{{ r.id }}" form="bulk" aria-label="Select {{ r.title }}">{% endif %}
+    <a class="item-main" href="{{ u('/imports/' ~ r.id) }}"><b>{{ r.title }}</b>
+      <span class="muted small">{{ KIND_TITLES[r.kind] }} · {{ SOURCE_LABELS.get(r.source, r.source) }} · {{ local(r.created_at) }}{% if r.kind == 'position' %} · {{ r.candidate.legs|length }} bet(s){% endif %}{% if r.edited_at %} · edited{% endif %}</span>
+      {% if r.issue %}<span class="small warn-text">{{ 'Waits for: ' ~ r.issue[6:] if r.issue.startswith('after ') else 'Cannot confirm yet: ' ~ r.issue }}</span>{% endif %}
+      {% if r.hold_reason and r.status == 'needs_confirmation' %}<span class="small warn-text">Held for review: {{ r.hold_reason }}</span>{% endif %}</a>
+    <span class="item-side">{{ pill('Pending' if r.status == 'needs_confirmation' else r.status|capitalize, 'warn' if r.status == 'needs_confirmation' else ('ok' if r.status == 'applied' else '')) }}{% if r.decided_by == 'assistant-auto' %}{{ pill('Auto-confirmed', 'info') }}{% elif r.decided_by == 'user-bulk' %}{{ pill('Bulk') }}{% endif %}</span>
+  </div>
+  {% else %}<p class="muted">Nothing imported. Things sent from ChatGPT or other tools wait here until you confirm them.</p>{% endfor %}
+</section>
+<details class="panel"><summary>How things arrive here</summary>
+  <p class="small"><b>ChatGPT (Matched Betting Assistant):</b> it can only submit entries — accounts, balances, transfers, offers, free bets, positions and notes — and cannot read your figures. With Trusted Assistant mode off (the default) everything waits here for you.</p>
+  <p class="small"><b>Other tools:</b> POST JSON to <code>{{ u('/api/import') }}</code> from a signed-in session with the <code>X-CSRF-Token</code> header.</p>
+</details>
+{% endblock %}

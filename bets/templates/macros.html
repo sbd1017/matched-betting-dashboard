@@ -1,0 +1,110 @@
+{% macro money(p, signed=False) -%}
+<span class="money {{ 'pos' if p and p > 0 and signed else ('neg' if p and p < 0 else '') }}">{{ fmt(p, signed=signed) }}</span>
+{%- endmacro %}
+
+{# Status as a small square + word (v3: no capsule badges). #}
+{% macro pill(text, tone='') -%}<span class="pill {{ tone }}">{{ text }}</span>{%- endmacro %}
+
+{# Pages must import these macros `with context`, or csrf_field() renders an empty token. #}
+{% macro csrf_field() -%}<input type="hidden" name="csrf_token" value="{{ csrf }}">{%- endmacro %}
+
+{% macro position_status(p) -%}
+{% if p.status == 'open' and p.incomplete %}{{ pill('Incomplete', 'warn') }}
+{% elif p.status == 'open' %}{{ pill('Open', 'info') }}
+{% elif p.status == 'void' %}{{ pill('Void') }}
+{% else %}{{ pill('Settled', 'ok') }}{% endif %}
+{%- endmacro %}
+
+{# One position as a v3 row: status + date | event, selection, bets | result or expected. #}
+{% macro position_item(p) -%}
+{% set incomplete = p.status == 'open' and p.incomplete %}
+<a class="row" href="{{ u('/positions/' ~ p.id) }}">
+  <div class="kind {{ 'k-amb' if incomplete else ('k-blue' if p.status == 'open' else ('k-ink' if p.status == 'void' else 'k-green')) }}">
+    <b>{{ 'Incomplete' if incomplete else ('Open' if p.status == 'open' else ('Void' if p.status == 'void' else 'Settled')) }}</b>
+    <span>{{ local(p.event_at, '%a %-d %b') if p.event_at else '—' }}</span>
+  </div>
+  <div>
+    <h3>{{ p.event }}</h3>
+    <p>{{ p.selection or p.market or KIND_LABELS[p.kind] }}{% if p.event_at %} · {{ local(p.event_at, '%H:%M') }}{% endif %} · {{ p.legs_text or 'No bets yet' }}</p>
+  </div>
+  <div class="ac">
+    {% if p.pnl is not none %}<div class="worth"><b class="{{ 'gain' if p.pnl > 0 else ('loss' if p.pnl < 0 else '') }}">{{ fmt(p.pnl, signed=True) }}</b><small>result</small></div>
+    {% elif p.expected_pnl_pence is not none %}<div class="worth"><b class="{{ 'gain' if p.expected_pnl_pence > 0 else ('loss' if p.expected_pnl_pence < 0 else '') }}">{{ fmt(p.expected_pnl_pence, signed=True) }}</b><small>expected</small></div>{% endif %}
+  </div>
+</a>
+{%- endmacro %}
+
+{% macro errors_box(errors) -%}
+{% if errors %}<div class="flash err" role="alert"><b>Please check:</b><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+{%- endmacro %}
+
+{# One-tap settlement for a position whose event has started. `next` is where to return afterwards. #}
+{% macro settle_buttons(pid, next='') -%}
+<form method="post" action="{{ u('/positions/' ~ pid ~ '/settle') }}" class="settle" data-confirm="Settle every bet in this position with that result?">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="next" value="{{ next }}">
+  <button class="btn s" name="outcome" value="back_won" title="The selection you backed won">Back won</button>
+  <button class="btn s" name="outcome" value="back_lost" title="The selection you backed lost">Back lost</button>
+  <button class="btn s" name="outcome" value="void" title="Void or refunded">Void</button>
+</form>
+{%- endmacro %}
+
+{# The optional structured offer terms; `o` is the offer being edited, or none for a new one. #}
+{% macro offer_terms_fields(o=none) -%}
+<label>Qualifying stake £ <input name="qualifying_stake" inputmode="decimal" value="{{ plain(o.qualifying_stake_pence) if o and o.qualifying_stake_pence else '' }}" placeholder="10"></label>
+<label>Minimum odds <input name="min_odds" inputmode="decimal" value="{{ o.min_odds if o and o.min_odds else '' }}" placeholder="2.0"></label>
+<label>Reward type <select name="reward_kind"><option value="">—</option>{% for k, label in (('snr', 'SNR free bets'), ('sr', 'SR free bets'), ('cash', 'Cash')) %}<option value="{{ k }}" {{ 'selected' if o and o.reward_kind == k }}>{{ label }}</option>{% endfor %}</select></label>
+<label>How many free bets <input name="reward_count" inputmode="numeric" value="{{ o.reward_count if o and o.reward_count else '' }}" placeholder="3"></label>
+<label>Each worth £ <small class="muted">or the cash amount</small><input name="reward_each" inputmode="decimal" value="{{ plain(o.reward_each_pence) if o and o.reward_each_pence else '' }}" placeholder="10"></label>
+<label>Free bets expire after (days) <input name="reward_expiry_days" inputmode="numeric" value="{{ o.reward_expiry_days if o and o.reward_expiry_days else '' }}" placeholder="7"></label>
+<label>Reward due when <select name="reward_trigger">{% for k, label in (('', 'the qualifier settles (default)'), ('bet_placed', 'the qualifying bet is placed'), ('bet_fully_matched', 'the qualifier is placed and hedged'), ('bet_lost', 'the qualifier loses'), ('other', 'the bookmaker confirms it')) %}<option value="{{ k }}" {{ 'selected' if o and (o.reward_trigger or '') == k }}>{{ label }}</option>{% endfor %}</select></label>
+{%- endmacro %}
+
+{# A position's bets as exchange cells (back blue, striped when a free bet; lay pink) and the result either way.
+   Needs p.legs / p.liability / p.if_back / p.if_lay (web.with_bets). #}
+{% macro bet_ladder(p) -%}
+<div class="ladder">
+  {% for l in p.legs %}<div class="odd {{ 'lay' if l.side == 'lay' else ('free' if l.free else 'back') }}"><div class="o">{{ l.odds }}</div><div class="s">{{ fmt(l.stake_pence)|replace('.00', '') if l.free else fmt(l.stake_pence) }}{{ ' free' if l.free else '' }} · {{ l.account }}</div></div>{% endfor %}
+  {% if p.if_back is not none %}<div class="outc">{% if p.liability %}<span>Liability <b>{{ fmt(p.liability) }}</b></span>{% endif %}
+    <span>If back wins <b class="{{ 'gain' if p.if_back > 0 else ('loss' if p.if_back < 0 else '') }}">{{ fmt(p.if_back, signed=True) }}</b></span>
+    <span>If lay wins <b class="{{ 'gain' if p.if_lay > 0 else ('loss' if p.if_lay < 0 else '') }}">{{ fmt(p.if_lay, signed=True) }}</b></span></div>{% endif %}
+</div>
+{%- endmacro %}
+
+
+{# Compact change history for one record (bets/readapi.history). #}
+{% macro history_list(items) -%}
+<ul class="audit">{% for h in items %}<li><span class="muted small">{{ h.at }}</span> {{ h.action.replace('_', ' ') }} <span class="small m2">· {{ h.actor }}</span>{% if h.note %} — {{ h.note }}{% endif %}{% if h.before or h.after %}<br><code class="small">{{ h.before|tojson if h.before else '' }} → {{ h.after|tojson if h.after else '' }}</code>{% endif %}</li>
+{% else %}<li class="muted">No changes recorded.</li>{% endfor %}</ul>
+{%- endmacro %}
+
+{# Outcome table (bets/brief.py _table_out / position_outcomes): the same server figures as the assistant sees. #}
+{% macro outcome_table(tab, caption='') -%}
+{% if tab and tab.rows %}
+<div class="tw"><table class="table outcome-table">
+  {% if caption %}<caption class="small m2">{{ caption }}</caption>{% endif %}
+  <thead><tr><th>Outcome</th>{% for c in tab.columns %}<th class="num">{{ c }}</th>{% endfor %}<th class="num">Total</th></tr></thead>
+  <tbody>{% for r in tab.rows %}
+    <tr class="{{ 'worst' if r.total == tab.worst_case else ('best' if r.total == tab.best_case else '') }}"><td>{{ r.outcome }}</td>
+      {% for v in r.legs %}<td class="num m2">{{ v }}</td>{% endfor %}
+      <td class="num"><b class="{{ 'gain' if r.total and r.total[0] != '-' and r.total != '0.00' else ('loss' if r.total and r.total[0] == '-' else '') }}">{{ r.total }}</b></td></tr>{% endfor %}</tbody>
+</table></div>
+<p class="small">Worst case <b>{{ tab.worst_case }}</b>{% if tab.worst_outcome %} ({{ tab.worst_outcome }}){% endif %} · best case <b>{{ tab.best_case }}</b>{% if tab.best_outcome %} ({{ tab.best_outcome }}){% endif %} ·
+  {% if tab.locked %}<span class="gain">guaranteed {{ tab.worst_case }}</span>{% else %}<span class="warn-text">not guaranteed: varies by {{ tab.spread }}</span>{% endif %}</p>
+{% endif %}
+{%- endmacro %}
+
+{% macro evidence_list(items, entity, entity_id, back) -%}
+<ul class="list">{% for e in items %}<li class="split"><span><b>{{ e.kind.replace('_', ' ') }}</b>{% if e.description %} · {{ e.description }}{% endif %}{% if e.facts %} <code class="small">{{ e.facts|tojson }}</code>{% endif %}
+  <span class="small m2">· {{ e.recorded_at }} · {{ e.actor or e.source }}</span></span>{% if e.file %}<a class="small" href="{{ u('/evidence/' ~ e.id ~ '/file') }}">View file</a>{% endif %}</li>
+{% else %}<li class="muted small">No evidence attached.</li>{% endfor %}</ul>
+<details><summary class="small">Attach evidence</summary>
+  <form method="post" action="{{ u('/evidence') }}" enctype="multipart/form-data" class="cols3">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="entity" value="{{ entity }}">
+    <input type="hidden" name="entity_id" value="{{ entity_id }}"><input type="hidden" name="next" value="{{ back }}">
+    <label>Kind <select name="kind">{% for k in EVIDENCE_KINDS %}<option value="{{ k }}">{{ k.replace('_', ' ') }}</option>{% endfor %}</select></label>
+    <label>What it shows <input name="description" maxlength="300"></label>
+    <label>Screenshot or PDF <small class="muted">(optional, ≤ 5 MB)</small><input type="file" name="file" accept="image/png,image/jpeg,image/webp,application/pdf"></label>
+    <button class="btn small">Attach</button>
+  </form>
+</details>
+{%- endmacro %}

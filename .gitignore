@@ -1,0 +1,16 @@
+# Data, secrets and backups live in var/ (service-owned, never committed)
+/var/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.sqlite3
+*.sqlite3-*
+auth.json
+secret.key
+.env
+.DS_Store
+._*
+/mcp-var/
+.venv-mcp/
+/mcp-lab-var/

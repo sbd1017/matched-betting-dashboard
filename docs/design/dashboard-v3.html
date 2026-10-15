@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Approved v3 reference mockup (sample data). -->
+</head>
+<body>
+<title>Matched Betting Dashboard v3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: built for a two-second look. Line 1 is four numbers. Below it, the left column is what you need to do
+   (in order) and the right column is where your money is. Everything else sits further down.
+   No cards: rules and space only. Bookmaker side = exchange back blue, exchange side = lay pink. */
+:root{
+  --bg:#FFFFFF; --sunk:#F3F4F5; --ink:#111316; --ink-2:#53585F; --ink-3:#8E939A; --rule:#E3E5E8; --rule-strong:#111316;
+  --back:#A6D8FF; --back-deep:#0A3152; --back-wash:#E6F3FF;
+  --lay:#FAC9D4;  --lay-deep:#5A1427;  --lay-wash:#FDECEF;
+  --gain:#0A7A4F; --loss:#D0303A; --loss-wash:#FDECEC; --warn:#B76E00; --warn-wash:#FFF4E0;
+  --btn:#111316; --btn-ink:#FFFFFF; --scrim:rgba(17,19,22,.35);
+  --f:"Archivo", "Helvetica Neue", Arial, sans-serif;
+  --f-mono:"IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0F1012; --sunk:#18191C; --ink:#EEEFF1; --ink-2:#A4A8AE; --ink-3:#6E737A; --rule:#26282C; --rule-strong:#EEEFF1;
+    --back:#9DD3FF; --back-deep:#062540; --back-wash:#132535;
+    --lay:#F8BFCD;  --lay-deep:#4B0F20; --lay-wash:#2E1820;
+    --gain:#45C78B; --loss:#FF6B76; --loss-wash:#2C1517; --warn:#F0A73A; --warn-wash:#2A2010;
+    --btn:#EEEFF1; --btn-ink:#0F1012; --scrim:rgba(0,0,0,.55); color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0F1012; --sunk:#18191C; --ink:#EEEFF1; --ink-2:#A4A8AE; --ink-3:#6E737A; --rule:#26282C; --rule-strong:#EEEFF1;
+  --back:#9DD3FF; --back-deep:#062540; --back-wash:#132535;
+  --lay:#F8BFCD;  --lay-deep:#4B0F20; --lay-wash:#2E1820;
+  --gain:#45C78B; --loss:#FF6B76; --loss-wash:#2C1517; --warn:#F0A73A; --warn-wash:#2A2010;
+  --btn:#EEEFF1; --btn-ink:#0F1012; --scrim:rgba(0,0,0,.55); color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{background:var(--bg)}
+body{color:var(--ink);font:400 14px/1.45 var(--f);-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+a{color:inherit}
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.gain{color:var(--gain)} .loss{color:var(--loss)} .warn{color:var(--warn)} .m2{color:var(--ink-2)} .m3{color:var(--ink-3)}
+.wrap{max-width:1440px;margin:0 auto;padding-inline:32px}
+
+/* ---------- top bar ---------- */
+.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--bg);border-bottom:1px solid var(--rule)}
+.bar .wrap{display:flex;align-items:center;gap:28px;height:58px}
+.wm{display:flex;align-items:center;gap:9px;text-decoration:none;flex:none}
+.wm .sq{display:grid;grid-template-columns:1fr 1fr;width:20px;height:20px}
+.wm .sq i:first-child{background:var(--back)} .wm .sq i:last-child{background:var(--lay)}
+.wm b{font:800 17px/1 var(--f);font-stretch:78%;letter-spacing:-.01em}
+.nav{display:flex;gap:2px;min-width:0;overflow-x:auto;scrollbar-width:none}
+.nav::-webkit-scrollbar{display:none}
+.nav a{position:relative;padding:19px 9px 18px;text-decoration:none;color:var(--ink-2);font-weight:500;white-space:nowrap}
+.nav a:hover{color:var(--ink)}
+.nav a[aria-current]{color:var(--ink);font-weight:600}
+.nav a[aria-current]::after{content:"";position:absolute;left:9px;right:9px;bottom:0;height:2px;background:var(--ink)}
+.nav sup{font:500 10px var(--f-mono);margin-left:2px;color:var(--ink-3);vertical-align:6px}
+.nav sup.hot{color:var(--loss)}
+.bar .r{margin-left:auto;display:flex;align-items:center;gap:8px;flex:none}
+.clock{font:500 12px/1.2 var(--f-mono);color:var(--ink-2);text-align:right;white-space:nowrap;padding:0 6px}
+.ib{width:34px;height:34px;display:grid;place-items:center;border:0;border-radius:4px;background:none;color:var(--ink-2)}
+.ib:hover{background:var(--sunk);color:var(--ink)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 12px;border-radius:4px;border:1px solid var(--rule);background:var(--bg);font-weight:600;font-size:13px;white-space:nowrap}
+.btn:hover{border-color:var(--ink)}
+.btn.k{background:var(--btn);color:var(--btn-ink);border-color:var(--btn)}
+.btn.k:hover{opacity:.88}
+.btn.red{background:var(--loss);border-color:var(--loss);color:#fff}
+.btn kbd{font:500 10.5px var(--f-mono);opacity:.6}
+.newwrap{position:relative}
+.menu{position:absolute;right:0;top:calc(100% + 6px);min-width:200px;padding:4px;background:var(--bg);border:1px solid var(--ink);z-index:30}
+.menu button{display:flex;justify-content:space-between;width:100%;padding:8px 10px;border:0;background:none;text-align:left}
+.menu button:hover{background:var(--sunk)}
+kbd{font:500 10.5px var(--f-mono);color:var(--ink-3)}
+
+/* ---------- status line: four numbers ---------- */
+.status{display:grid;grid-template-columns:minmax(0,1.5fr) repeat(3,minmax(0,1fr));border-bottom:1px solid var(--rule)}
+.stat{padding:26px 24px 24px;min-width:0;display:flex;flex-direction:column}
+.stat:first-child{padding-left:0}
+.stat + .stat{border-left:1px solid var(--rule)}
+.stat .k{font-size:13px;font-weight:600;color:var(--ink-2)}
+.stat .v{font:800 52px/.9 var(--f);font-stretch:66%;letter-spacing:-.01em;margin:12px 0 10px;white-space:nowrap}
+.stat .v .p{font-size:.55em;color:var(--ink-3)}
+.stat .v .c{font-size:.6em;vertical-align:.5em;margin-right:2px}
+.stat.hero .v{font-size:clamp(64px,7.4vw,104px)}
+.stat .s{font-size:13px;color:var(--ink-2);margin-top:auto}
+.stat .s b{font-weight:600}
+.stat.alert{background:var(--loss-wash)}
+.stat.alert .k,.stat.alert .v{color:var(--loss)}
+.stat.alert .s{color:var(--ink)}
+.stat .s .btn{margin-top:10px}
+.spark{display:block;width:100%;max-width:280px;height:30px;margin-bottom:8px}
+
+/* ---------- main two columns ---------- */
+.main2{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:56px;padding-block:30px 34px}
+.col{min-width:0}
+.sh{display:flex;align-items:baseline;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+.sh h2{margin:0;font:700 22px/1 var(--f);font-stretch:80%;letter-spacing:-.01em}
+.sh h2 a{text-decoration:none}
+.sh h2 a:hover{text-decoration:underline;text-underline-offset:4px;text-decoration-thickness:1.5px}
+.sh .n{font:500 13px var(--f-mono);color:var(--ink-3)}
+.sh .aside{margin-left:auto;font-size:13px;color:var(--ink-2)}
+
+/* to-do list */
+.grp{display:flex;align-items:baseline;gap:8px;font-size:12.5px;font-weight:600;color:var(--ink-2);padding:16px 0 7px;border-bottom:1px solid var(--rule-strong)}
+.grp:first-child{padding-top:4px}
+.grp i{font-style:normal;font-weight:400;color:var(--ink-3)}
+.grp .cnt{margin-left:auto;font:500 12px var(--f-mono);color:var(--ink-3)}
+.row{display:grid;grid-template-columns:86px minmax(0,1fr) auto;gap:16px;padding:13px 0;border-bottom:1px solid var(--rule);align-items:center;transition:opacity .2s}
+.row.top{align-items:start}
+.kind{display:flex;flex-direction:column;gap:2px}
+.kind b{font:600 11.5px/1 var(--f);letter-spacing:.02em}
+.kind span{font:500 13px var(--f-mono)}
+.k-red b,.k-red span{color:var(--loss)} .k-amb b,.k-amb span{color:var(--warn)} .k-ink b{color:var(--ink-2)} .k-blue b{color:var(--back-deep)}
+:root[data-theme="dark"] .k-blue b{color:var(--back)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .k-blue b{color:var(--back)}}
+.row h3{margin:0;font:600 15px/1.3 var(--f)}
+.row p{margin:3px 0 0;color:var(--ink-2);font-size:13px}
+.row .ac{display:flex;align-items:center;gap:12px;justify-content:flex-end}
+.row .worth{text-align:right;line-height:1.1}
+.row .worth b{display:block;font:700 20px/1 var(--f);font-stretch:72%}
+.row .worth small{font-size:11.5px;color:var(--ink-3)}
+.row.done{opacity:.45}
+.row.done h3{text-decoration:line-through}
+.ladder{display:flex;flex-wrap:wrap;gap:3px;margin-top:9px}
+.odd{width:96px;padding:5px 8px 6px;border-radius:2px}
+.odd .o{font:600 17px/1.1 var(--f-mono);letter-spacing:-.02em}
+.odd .s{font-size:11.5px;margin-top:1px;white-space:nowrap}
+.odd.back{background:var(--back);color:var(--back-deep)}
+.odd.lay{background:var(--lay);color:var(--lay-deep)}
+.outc{display:flex;flex-direction:column;justify-content:center;padding:0 10px;font-size:12.5px;color:var(--ink-2);gap:1px}
+.outc b{font-weight:600}
+
+/* money */
+.total{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.total b{font:800 34px/1 var(--f);font-stretch:68%}
+.total span{font-size:13px;color:var(--ink-2)}
+.loanbar{position:relative;height:22px}
+.loanbar .line{position:absolute;left:0;bottom:4px;height:8px;border:1.5px solid var(--warn);border-bottom:0}
+.loanbar .txt{position:absolute;left:0;bottom:14px;font-size:12px;font-weight:600;color:var(--warn);white-space:nowrap}
+.blocks{display:flex;gap:3px;height:56px}
+.blk{min-width:6px}
+.b-lay{background:var(--lay)}
+.b-lay-h{background:repeating-linear-gradient(-45deg,var(--lay) 0 5px,var(--lay-wash) 5px 10px)}
+.b-back{background:var(--back)}
+.b-back-h{background:repeating-linear-gradient(-45deg,var(--back) 0 5px,var(--back-wash) 5px 10px)}
+.mlist{margin-top:12px}
+.mrow{display:grid;grid-template-columns:14px minmax(0,1fr) auto;gap:10px;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--rule)}
+.mrow:last-child{border-bottom:0}
+.mrow i{width:12px;height:12px;align-self:center}
+.mrow span small{color:var(--ink-3);margin-left:6px;font-size:12px}
+.mrow b{font-weight:600}
+.mrow.loan b{color:var(--warn)}
+
+/* free bets */
+.fbsec{margin-top:30px}
+.fb{display:grid;grid-template-columns:62px minmax(0,1fr) auto;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--rule)}
+.fb:first-child{border-top:1px solid var(--rule-strong)}
+.fb .amt{font:800 30px/1 var(--f);font-stretch:66%}
+.fb h3{margin:0;font:600 14px/1.3 var(--f)}
+.fb h3 span{font-weight:400;color:var(--ink-3)}
+.fb p{margin:2px 0 0;font-size:12.5px;color:var(--ink-2)}
+.fb .worth{text-align:right;font-weight:600}
+.fb .worth small{display:block;font-weight:400;font-size:11.5px;color:var(--ink-3)}
+.drain{height:3px;background:var(--rule);margin-top:7px;max-width:220px}
+.drain i{display:block;height:100%;background:var(--loss)}
+
+/* ---------- lower sections ---------- */
+section{padding-block:34px;border-top:1px solid var(--rule)}
+.offer{display:grid;grid-template-columns:minmax(220px,1.1fr) minmax(320px,1.6fr) minmax(170px,.9fr) 110px;gap:24px;align-items:center;padding:15px 0;border-bottom:1px solid var(--rule)}
+.offer:first-child{border-top:1px solid var(--rule-strong)}
+.offer h3{margin:0;font:600 15px var(--f)}
+.offer h3 span{font-weight:400;color:var(--ink-3)}
+.offer p{margin:2px 0 0;font-size:12.5px;color:var(--ink-2)}
+.steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));font-size:12px;color:var(--ink-3)}
+.steps div{position:relative;padding-top:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.steps div::before{content:"";position:absolute;left:0;right:3px;top:0;height:3px;background:var(--rule)}
+.steps .d{color:var(--ink-2)} .steps .d::before{background:var(--ink)}
+.steps .c{color:var(--ink);font-weight:600} .steps .c::before{background:linear-gradient(90deg,var(--ink) 50%,var(--rule) 50%)}
+.offer .st{font-size:13px} .offer .st b{display:block;font-weight:600}
+.offer .st span{color:var(--ink-2)}
+.offer .v{text-align:right}
+.offer .v b{display:block;font:700 20px/1 var(--f);font-stretch:72%}
+.offer .v small{font-size:11.5px;color:var(--ink-3)}
+.finished{margin:12px 0 0;font-size:12.5px;color:var(--ink-2)}
+.finished b{font-weight:600}
+
+.lower{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:56px}
+.range{margin-left:auto;display:flex;gap:14px}
+.range button{border:0;background:none;padding:0;font:500 12px var(--f-mono);color:var(--ink-3)}
+.range button[aria-pressed="true"]{color:var(--ink);text-decoration:underline;text-underline-offset:4px}
+#chart{display:block;width:100%;height:304px}
+#chart text{font:500 10.5px var(--f-mono);fill:var(--ink-3)}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-top:18px;padding-top:16px;border-top:1px solid var(--rule)}
+.stats b{display:block;font:800 26px/1 var(--f);font-stretch:70%}
+.stats span{font-size:12px;color:var(--ink-2)}
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{font-size:12px;font-weight:500;color:var(--ink-3);text-align:left;padding:0 10px 8px;border-bottom:1px solid var(--rule-strong);white-space:nowrap}
+td{padding:11px 10px;border-bottom:1px solid var(--rule);white-space:nowrap}
+th:first-child,td:first-child{padding-left:0} th:last-child,td:last-child{padding-right:0}
+.rt{text-align:right}
+td small{display:block;color:var(--ink-3);font-size:11.5px}
+.cb,.cl{display:inline-block;font:500 12px var(--f-mono);padding:2px 6px;border-radius:2px}
+.cb{background:var(--back);color:var(--back-deep)} .cl{background:var(--lay);color:var(--lay-deep)}
+.foot-note{padding-block:20px 40px;margin:0;font-size:12px;color:var(--ink-3);border-top:1px solid var(--rule)}
+
+/* ---------- calculator drawer ---------- */
+.scrim{position:fixed;inset:0;background:var(--scrim);z-index:40;opacity:0;pointer-events:none;transition:opacity .2s}
+.scrim.on{opacity:1;pointer-events:auto}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(400px,100%);background:var(--bg);border-left:1px solid var(--ink);z-index:41;padding:calc(20px + env(safe-area-inset-top,0px)) 24px calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(102%);visibility:hidden;transition:transform .22s ease,visibility 0s .22s;overflow-y:auto}
+.drawer.on{transform:none;visibility:visible;transition:transform .22s ease}
+.drawer .sh{margin-bottom:18px}
+.drawer .x{margin-left:auto}
+.ctx{font-size:13px;color:var(--ink-2);margin:-6px 0 16px;min-height:1em}
+.modes{display:flex;gap:16px;border-bottom:1px solid var(--rule-strong)}
+.modes button{border:0;background:none;padding:0 0 9px;color:var(--ink-3);font-weight:600;font-size:13px;position:relative}
+.modes button[aria-pressed="true"]{color:var(--ink)}
+.modes button[aria-pressed="true"]::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--ink)}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:3px;margin-top:14px}
+.fld{padding:7px 10px 8px}
+.fld label{display:block;font-size:11.5px;font-weight:600;opacity:.8}
+.fld input{width:100%;min-width:0;border:0;background:none;outline:none;font:600 22px/1.2 var(--f-mono);letter-spacing:-.02em}
+.fld.b{background:var(--back);color:var(--back-deep)}
+.fld.l{background:var(--lay);color:var(--lay-deep)}
+.fld.c{background:var(--sunk)}
+.fld:focus-within{box-shadow:inset 0 0 0 2px currentColor}
+.out{margin-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px 14px}
+.out .main{grid-column:1/-1;display:flex;align-items:baseline;justify-content:space-between;padding-bottom:12px;border-bottom:1px solid var(--rule)}
+.out .main b{font:800 48px/1 var(--f);font-stretch:66%}
+.out .main span{font-size:13px;color:var(--ink-2)}
+.out .kv span{display:block;font-size:12px;color:var(--ink-3)}
+.out .kv b{font-weight:600;font-size:16px}
+
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translate(-50%,16px);opacity:0;pointer-events:none;background:var(--btn);color:var(--btn-ink);padding:10px 16px;font-weight:500;transition:opacity .18s,transform .18s;max-width:calc(100% - 32px);z-index:50}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+
+/* ---------- responsive ---------- */
+@media (max-width:1240px){
+  .offer{grid-template-columns:minmax(200px,1fr) minmax(260px,1.4fr) 110px}
+  .offer .st{display:none}
+  .stat .v{font-size:44px}
+}
+@media (max-width:1080px){
+  .main2,.lower{grid-template-columns:minmax(0,1fr);gap:40px}
+  .status{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .stat.hero{grid-column:1/-1;padding-left:0;border-bottom:1px solid var(--rule)}
+  .stat:nth-child(2){border-left:0;padding-left:0}
+  .clock{display:none}
+}
+@media (max-width:760px){
+  .wrap{padding-inline:16px}
+  .bar .wrap{gap:12px;height:auto;flex-wrap:wrap;padding-top:10px}
+  .nav{order:3;width:calc(100% + 18px);margin:0 -9px}
+  .nav a{padding:12px 9px}
+  .bar .calc-btn kbd{display:none}
+  .status{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .stat{padding:18px 14px}
+  .stat:nth-child(3){border-left:1px solid var(--rule)}
+  .stat:nth-child(4){grid-column:1/-1;border-left:0;border-top:1px solid var(--rule);padding-inline:14px}
+  .stat .v{font-size:38px}
+  .row{grid-template-columns:64px minmax(0,1fr);gap:12px}
+  .row .ac{grid-column:2;justify-content:flex-start}
+  .row .worth{text-align:left}
+  .offer{grid-template-columns:minmax(0,1fr) auto;gap:12px}
+  .offer .steps{grid-column:1/-1;grid-row:2}
+  .stats{grid-template-columns:1fr 1fr}
+  .fb{grid-template-columns:52px minmax(0,1fr)}
+  .fb .worth{grid-column:2;text-align:left}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<header class="bar">
+  <div class="wrap">
+    <a class="wm" href="#dashboard"><span class="sq" aria-hidden="true"><i></i><i></i></span><b>Matched Betting</b></a>
+    <nav class="nav" id="nav" aria-label="Main"></nav>
+    <div class="r">
+      <div class="clock" id="clock"></div>
+      <button class="ib" id="search" aria-label="Search" title="Search (⌘K)"></button>
+      <button class="ib" id="theme" aria-label="Switch theme"></button>
+      <button class="btn calc-btn" id="calcbtn">Calculator <kbd>C</kbd></button>
+      <div class="newwrap">
+        <button class="btn k" id="newbtn" aria-haspopup="true" aria-expanded="false">New</button>
+        <div class="menu" id="newmenu" hidden></div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="status" id="status" aria-label="At a glance"></div>
+
+  <div class="main2">
+    <div class="col">
+      <div class="sh"><h2><a href="#calendar">To do</a></h2><span class="n" id="todo-n"></span><span class="aside">In the order they matter</span></div>
+      <div id="todo"></div>
+    </div>
+    <div class="col">
+      <div class="sh"><h2><a href="#accounts">Your money</a></h2></div>
+      <div id="money"></div>
+      <div class="fbsec">
+        <div class="sh"><h2><a href="#freebets">Free bets</a></h2><span class="n">£40</span></div>
+        <div id="fbs"></div>
+      </div>
+    </div>
+  </div>
+
+  <section aria-labelledby="h-off">
+    <div class="sh"><h2 id="h-off"><a href="#offers">Offers</a></h2><span class="n">3 running</span></div>
+    <div id="offers"></div>
+  </section>
+
+  <section class="lower" aria-label="Performance">
+    <div class="col">
+      <div class="sh"><h2><a href="#reports">Profit</a></h2>
+        <div class="range" role="group" aria-label="Range" id="range">
+          <button data-r="30" aria-pressed="false">1M</button><button data-r="90" aria-pressed="false">3M</button><button data-r="0" aria-pressed="true">All</button>
+        </div></div>
+      <svg id="chart" role="img" aria-label="Cumulative profit line above a bar for every settled bet"></svg>
+      <div class="stats" id="stats"></div>
+    </div>
+    <div class="col">
+      <div class="sh"><h2><a href="#accounts">Accounts</a></h2></div>
+      <div class="tw"><table id="acc"></table></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-led">
+    <div class="sh"><h2 id="h-led"><a href="#positions">Settled</a></h2><span class="n">latest 8</span></div>
+    <div class="tw"><table id="ledger"></table></div>
+  </section>
+  <p class="foot-note">Sample data. Every figure on this page is worked out from the same list of bets, so the totals reconcile.</p>
+</main>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-labelledby="h-calc" aria-hidden="true">
+  <div class="sh"><h2 id="h-calc">Lay calculator</h2><span class="n">Smarkets 2%</span><button class="ib x" id="close" aria-label="Close calculator">✕</button></div>
+  <p class="ctx" id="ctx"></p>
+  <div class="modes" role="group" aria-label="Bet type" id="mode">
+    <button data-m="QB" aria-pressed="true">Qualifying</button>
+    <button data-m="SNR" aria-pressed="false">Free bet SNR</button>
+    <button data-m="SR" aria-pressed="false">Free bet SR</button>
+  </div>
+  <div class="fields">
+    <div class="fld b"><label for="c-stake">Back stake £</label><input id="c-stake" inputmode="decimal" value="10"></div>
+    <div class="fld b"><label for="c-back">Back odds</label><input id="c-back" inputmode="decimal" value="3.20"></div>
+    <div class="fld l"><label for="c-lay">Lay odds</label><input id="c-lay" inputmode="decimal" value="3.30"></div>
+    <div class="fld c"><label for="c-comm">Commission %</label><input id="c-comm" inputmode="decimal" value="2"></div>
+  </div>
+  <div class="out" id="c-out" aria-live="polite"></div>
+</aside>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(function(){
+const $=s=>document.querySelector(s);
+const r2=x=>Math.round(x*100)/100;
+const gbp=(x,sign)=>{const a=Math.abs(x).toFixed(2);const s=x<0?'−':(sign&&x>0?'+':'');return s+'£'+a;};
+const cls=x=>x>0.004?'gain':(x<-0.004?'loss':'m2');
+const ic=(d,w=16)=>`<svg viewBox="0 0 24 24" width="${w}" height="${w}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
+const I={search:'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4',sun:'M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4',moon:'M21 13A9 9 0 1 1 11 3a7 7 0 0 0 10 10z',auto:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 3v18'};
+
+/* scene clock: the sample is set on Fri 9 Oct 2026, 11:32, and ticks from there */
+const T0=new Date(2026,9,9,11,32,0).getTime(), boot=Date.now();
+const now=()=>new Date(T0+(Date.now()-boot));
+const D=(m,d,h=0,mi=0)=>new Date(2026,m-1,d,h,mi);
+const until=t=>{let s=Math.max(0,(t-now())/1000);const d=Math.floor(s/86400);s-=d*86400;const h=Math.floor(s/3600);const m=Math.floor((s-h*3600)/60);return d?`${d}d ${h}h`:(h?`${h}h ${m}m`:`${m}m`);};
+
+/* matched betting maths */
+function match({type,stake,back,lay,comm=0.02}){
+  let ls=type==='SNR'?stake*(back-1)/(lay-comm):stake*back/(lay-comm);
+  ls=r2(ls); const liab=r2(ls*(lay-1));
+  const ifBack=type==='SR'?stake*back-liab:stake*(back-1)-liab;
+  const ifLay=type==='QB'?ls*(1-comm)-stake:ls*(1-comm);
+  return {ls,liab,ifBack:r2(ifBack),ifLay:r2(ifLay)};
+}
+
+/* data */
+const settled=[
+ ['2026-07-03','Brazil v Mexico','Bet365','QB',10,2.10,2.16,'lay','Bet £10 Get £30'],
+ ['2026-07-05','Alcaraz v Draper','Bet365','SNR',30,5.50,5.80,'lay','Bet £10 Get £30'],
+ ['2026-07-09','England v Spain','William Hill','QB',10,3.20,3.30,'back','Bet £10 Get £30'],
+ ['2026-07-12','Celtic v Leicester','William Hill','SNR',30,7.00,7.40,'lay','Bet £10 Get £30'],
+ ['2026-07-18','Liverpool v Athletic','Paddy Power','QB',10,1.80,1.83,'lay','Bet £10 Get £20'],
+ ['2026-07-19','Arsenal v Villarreal','Paddy Power','SNR',20,4.60,4.80,'back','Bet £10 Get £20'],
+ ['2026-07-26','Spurs v Bayern','Ladbrokes','QB',10,2.50,2.56,'back','Bet £10 Get £20'],
+ ['2026-07-27','Chelsea v Milan','Ladbrokes','SNR',20,5.00,5.20,'lay','Bet £10 Get £20'],
+ ['2026-08-02','Rangers v Hearts','Sky Bet','QB',10,1.95,1.99,'lay','Bet £10 Get £20'],
+ ['2026-08-03','Hibs v Aberdeen','Sky Bet','SNR',20,4.20,4.40,'lay','Bet £10 Get £20'],
+ ['2026-08-10','Man Utd v Fulham','Betway','QB',10,1.62,1.65,'back','Bet £10 Get £10'],
+ ['2026-08-16','Brentford v Forest','Betway','SNR',10,3.90,4.10,'lay','Bet £10 Get £10'],
+ ['2026-08-21','Leeds v Everton','Unibet','QB',20,2.30,2.36,'lay','Bet £20 Get £40'],
+ ['2026-08-23','Brighton v Fulham','Unibet','SNR',40,6.50,6.90,'lay','Bet £20 Get £40'],
+ ['2026-08-30','Newcastle v Wolves','BoyleSports','QB',10,1.70,1.73,'back','Bet £10 Get £20'],
+ ['2026-08-31','Villa v Bournemouth','BoyleSports','SNR',20,4.50,4.70,'back','Bet £10 Get £20'],
+ ['2026-09-06','Wales v Belgium','Midnite','QB',10,4.00,4.20,'lay','Bet £10 Get £20'],
+ ['2026-09-07','Scotland v Greece','Midnite','SNR',20,3.60,3.75,'lay','Bet £10 Get £20'],
+ ['2026-09-13','West Ham v Spurs','Betfair Sportsbook','QB',10,2.80,2.86,'lay','Bet £10 Get £20'],
+ ['2026-09-14','Palace v Sunderland','Betfair Sportsbook','SNR',20,5.50,5.80,'lay','Bet £10 Get £20'],
+ ['2026-09-20','Liverpool v Everton','888sport','QB',10,1.44,1.46,'back','Bet £10 Get £30'],
+ ['2026-09-21','Man City v Arsenal','888sport','SNR',30,4.33,4.50,'lay','Bet £10 Get £30'],
+ ['2026-09-28','Moldova v Faroe Islands','Betfred','QB',10,3.00,3.10,'lay','Bet £10 Get £50'],
+ ['2026-10-02','Belgium v Turkey','Betfred','SNR',10,6.00,6.20,'lay','Bet £10 Get £50'],
+ ['2026-10-04','Portugal v Norway','Kwiff','QB',10,2.20,2.26,'back','Bet £10 Get £10'],
+ ['2026-10-05','France v Belgium','Betfred','SNR',10,6.80,7.20,'lay','Bet £10 Get £50'],
+ ['2026-10-05','Italy v Turkey','Kwiff','SNR',10,4.50,4.70,'lay','Bet £10 Get £10'],
+ ['2026-10-06','PSV v Ajax','BetMGM','QB',20,2.60,2.66,'lay','Bet £20 Get £20'],
+ ['2026-10-07','Roma v Lazio','BetMGM','SNR',20,5.00,5.25,'back','Bet £20 Get £20'],
+].map(([d,ev,b,type,stake,back,lay,won,offer])=>{const m=match({type,stake,back,lay});return {date:new Date(d+'T20:00'),ev,b,type,stake,back,lay,won,offer,...m,pl:won==='back'?m.ifBack:m.ifLay};});
+
+const open=[
+ {ev:'Chelsea v Bournemouth',ko:D(10,10,14,0),b:'Coral',type:'QB',stake:5,back:2.40,lay:2.44,sel:'Chelsea'},
+ {ev:'Arsenal v Leeds',ko:D(10,10,17,30),b:'Betfred',type:'SNR',stake:10,back:6.00,lay:6.20,sel:'Draw'},
+].map(p=>({...p,...match(p)}));
+
+const SM_BAL=128.32;
+const liab=r2(open.reduce((a,p)=>a+p.liab,0));
+const accounts=[
+ {n:'Smarkets',kind:'Exchange',cash:SM_BAL,locked:liab,fb:''},
+ {n:'Kwiff',kind:'Bookmaker',cash:22.00,locked:0,fb:''},
+ {n:'Betway',kind:'Bookmaker',cash:16.20,locked:0,fb:''},
+ {n:'Coral',kind:'Bookmaker',cash:0,locked:5.00,fb:'£20 due Sat'},
+ {n:'Betfred',kind:'Bookmaker',cash:0,locked:0,fb:'2 × £10'},
+];
+const FUND={amt:100,from:'First Direct',due:D(10,14,12,0)};
+
+const total=r2(settled.reduce((a,s)=>a+s.pl,0));
+const inRange=(a,b)=>r2(settled.filter(s=>s.date>=a&&s.date<b).reduce((x,s)=>x+s.pl,0));
+const month=inRange(D(10,1),D(10,10)), week=inRange(D(10,5),D(10,10));
+const snr=settled.filter(s=>s.type==='SNR'), qbs=settled.filter(s=>s.type==='QB');
+const retention=snr.reduce((a,s)=>a+s.pl,0)/snr.reduce((a,s)=>a+s.stake,0);
+const ret=Math.round(retention*100);
+const qbLoss=r2(qbs.reduce((a,s)=>a+s.pl,0));
+const offersDone=new Set(snr.map(s=>s.b+s.offer)).size;
+const locked=r2(open.reduce((a,p)=>a+p.ifLay,0));
+const evBetfred=r2(20*retention), evCoral=r2(20*retention);
+const toCome=r2(locked+evBetfred+evCoral);
+const smFree=r2(SM_BAL-liab), bookCash=r2(accounts.filter(a=>a.kind==='Bookmaker').reduce((x,a)=>x+a.cash,0));
+const staked=r2(accounts.filter(a=>a.kind==='Bookmaker').reduce((x,a)=>x+a.locked,0));
+const capital=r2(SM_BAL+bookCash+staked);
+const short=r2(FUND.amt-smFree);
+const exp=D(10,10,23,59), life=exp-D(10,2,20,0);
+
+/* nav + bar */
+const nav=[['Dashboard',null,1],['Positions',2],['Free bets',2],['Offers',3],['Accounts'],['Transactions'],['Imports',18,0,1],['Calendar'],['Reports'],['Settings']];
+$('#nav').innerHTML=nav.map(([l,c,cur,hot])=>`<a href="#${l.toLowerCase().replace(' ','')}"${cur?' aria-current="page"':''}>${l}${c!=null?`<sup class="${hot?'hot':''}">${c}</sup>`:''}</a>`).join('');
+$('#search').innerHTML=ic(I.search,17);
+
+let tt;function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),2600);}
+
+/* status line */
+const [pi,pd]=total.toFixed(2).split('.');
+$('#status').innerHTML=`
+ <div class="stat hero"><span class="k">Profit banked</span>
+  <span class="v"><span class="c">£</span>${pi}<span class="p">.${pd}</span></span>
+  <svg class="spark" id="spark" viewBox="0 0 280 30" preserveAspectRatio="none" aria-hidden="true"></svg>
+  <span class="s"><b class="gain">${gbp(month,1)}</b> in October · <b class="gain">${gbp(week,1)}</b> this week</span></div>
+ <div class="stat"><span class="k">Still to come</span><span class="v gain">${gbp(toCome,1)}</span>
+  <span class="s">${gbp(locked,1)} locked in 2 bets, plus £40 of free bets</span></div>
+ <div class="stat"><span class="k">Free to bet</span><span class="v">£${smFree.toFixed(2)}</span>
+  <span class="s">on Smarkets · £${bookCash.toFixed(2)} to withdraw</span></div>
+ <div class="stat alert"><span class="k">Expiring</span><span class="v"><span data-cd></span></span>
+  <span class="s"><b>£20</b> of Betfred free bets, worth ≈ £${evBetfred.toFixed(2)}<br><button class="btn red" data-fill="betfred">Find a match</button></span></div>`;
+(function spark(){let c=0;const pts=settled.map(s=>[s.date,c+=s.pl]);const a=D(7,1),b=now();
+ const x=d=>(d-a)/(b-a)*278+1,y=v=>28-v/total*26;let p=`M1,28`;pts.forEach(([d,v])=>p+=`H${x(d)}V${y(v)}`);p+=`H279`;
+ $('#spark').innerHTML=`<path d="${p}" fill="none" stroke="var(--gain)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`;})();
+
+/* to do */
+const ladder=p=>`<div class="ladder"><div class="odd back"><div class="o">${p.back.toFixed(2)}</div><div class="s">${p.type==='SNR'?'£'+p.stake+' free':'£'+p.stake.toFixed(2)} · ${p.b}</div></div>
+ <div class="odd lay"><div class="o">${p.lay.toFixed(2)}</div><div class="s">£${p.ls.toFixed(2)} · liab ${p.liab.toFixed(2)}</div></div>
+ <div class="outc"><span>${p.type==='QB'?p.sel+' win':p.sel} <b class="${cls(p.ifBack)}">${gbp(p.ifBack,1)}</b></span><span>Otherwise <b class="${cls(p.ifLay)}">${gbp(p.ifLay,1)}</b></span></div></div>`;
+const groups=[
+ {l:'Needs you',rows:[
+  {k:['Expires','Sat 23:59','k-red'],h:'Place 2 Betfred free bets',p:'2 × £10, stake not returned',w:[`≈ £${evBetfred.toFixed(2)}`,'to collect'],ac:`<button class="btn k" data-fill="betfred">Find a match</button>`},
+  {k:['Inbox','18','k-red'],h:'Confirm imported transactions',p:'12 from Smarkets, 6 from Coral',ac:`<button class="btn k" data-toast="Opening Imports with the 15 confident matches already ticked">Review</button>`},
+  {k:['Cash','2 accounts','k-ink'],h:`Withdraw £${bookCash.toFixed(2)} from bookmakers`,p:'Kwiff £22.00, Betway £16.20. Both offers finished.',ac:`<button class="btn" data-done="Logged as pending withdrawals">Mark withdrawn</button>`},
+ ]},
+ {l:'Tomorrow',d:'Sat 10 Oct',note:'Nothing to do, just watch',rows:[
+  {k:['Kick-off','14:00','k-ink'],top:1,h:open[0].ev,p:'Coral qualifier. Unlocks £20 in free bets when it settles.',pos:open[0],w:[gbp(open[0].ifLay,1),'either way',cls(open[0].ifLay)]},
+  {k:['Arrives','~16:00','k-blue'],h:'Coral free bets credited',p:'4 × £5, after Chelsea v Bournemouth settles',w:[`≈ £${evCoral.toFixed(2)}`,'value']},
+  {k:['Kick-off','17:30','k-ink'],top:1,h:open[1].ev,p:'Betfred free bet 3 of 5, on the draw',pos:open[1],w:[gbp(open[1].ifLay,1),'either way',cls(open[1].ifLay)]},
+ ]},
+ {l:'Next week',rows:[
+  {k:['Due','Wed 12:00','k-amb'],h:`Return £${FUND.amt} to ${FUND.from}`,p:`£${short.toFixed(2)} short on Smarkets until Saturday’s lays settle`,ac:`<button class="btn" data-done="Reminder set for Sat 10 Oct, 19:45">Remind me Sat</button>`},
+ ]},
+];
+$('#todo-n').textContent=groups[0].rows.length+' need you';
+$('#todo').innerHTML=groups.map(g=>`<div class="grp">${g.l}${g.d?`<i>${g.d}</i>`:''}<span class="cnt">${g.note||''}</span></div>`+g.rows.map(r=>`<div class="row${r.top?' top':''}">
+  <div class="kind ${r.k[2]}"><b>${r.k[0]}</b><span>${r.k[1]}</span></div>
+  <div><h3>${r.h}</h3><p>${r.p}</p>${r.pos?ladder(r.pos):''}</div>
+  <div class="ac">${r.w?`<div class="worth"><b class="${r.w[2]||''}">${r.w[0]}</b><small>${r.w[1]}</small></div>`:''}${r.ac||''}</div></div>`).join('')).join('');
+
+/* money */
+const segs=[
+ ['b-lay','Free to lay',smFree,'Smarkets'],
+ ['b-lay-h','Held as liability',liab,'Smarkets, until Sat'],
+ ['b-back','Cash at bookmakers',bookCash,'Kwiff, Betway'],
+ ['b-back-h','Staked',staked,'Coral, until Sat'],
+];
+$('#money').innerHTML=`<div class="total"><b>£${capital.toFixed(2)}</b><span>across Smarkets and 4 bookmakers</span></div>
+ <div class="loanbar"><span class="line" style="width:${FUND.amt/capital*100}%"></span><span class="txt">£${FUND.amt} borrowed</span></div>
+ <div class="blocks" role="img" aria-label="How your money is split">${segs.map(([c,l,v])=>`<div class="blk ${c}" style="flex:${v}" title="${l}: £${v.toFixed(2)}"></div>`).join('')}</div>
+ <div class="mlist">${segs.map(([c,l,v,s])=>`<div class="mrow"><i class="${c}"></i><span>${l}<small>${s}</small></span><b>£${v.toFixed(2)}</b></div>`).join('')}
+  <div class="mrow loan"><i style="border:1.5px solid var(--warn);border-bottom:0"></i><span>Borrowed from ${FUND.from}<small>due back Wed 14 Oct</small></span><b>£${FUND.amt.toFixed(2)}</b></div></div>`;
+
+/* free bets */
+$('#fbs').innerHTML=`
+ <div class="fb"><span class="amt loss">£20</span><div><h3>Betfred <span>2 × £10 SNR</span></h3><p class="loss">Expires in <span data-cd></span></p><div class="drain"><i id="drain"></i></div></div><span class="worth">≈ £${evBetfred.toFixed(2)}<small>at your ${ret}%</small></span></div>
+ <div class="fb"><span class="amt">£10</span><div><h3>Betfred <span>placed</span></h3><p>Draw in Arsenal v Leeds, Sat 17:30</p></div><span class="worth gain">${gbp(open[1].ifLay,1)}<small>locked</small></span></div>
+ <div class="fb"><span class="amt m3">£20</span><div><h3>Coral <span>4 × £5, not credited yet</span></h3><p>Arrives Sat around 16:00</p></div><span class="worth m2">≈ £${evCoral.toFixed(2)}<small>at your ${ret}%</small></span></div>`;
+
+/* calculator drawer */
+let mode='QB';
+function calc(){
+  const v=id=>parseFloat($(id).value.replace(',','.'));
+  const stake=v('#c-stake'),back=v('#c-back'),lay=v('#c-lay'),comm=v('#c-comm')/100;
+  const ok=[stake,back,lay].every(x=>x>0)&&back>1&&lay>1&&comm>=0&&comm<1&&lay>comm;
+  if(!ok){$('#c-out').innerHTML=`<div class="main"><span>Enter a stake and both odds to see the lay.</span></div>`;return;}
+  const m=match({type:mode,stake,back,lay,comm}), worst=Math.min(m.ifBack,m.ifLay);
+  $('#c-out').innerHTML=`<div class="main"><span>Lay on Smarkets</span><b>£${m.ls.toFixed(2)}</b></div>
+   <div class="kv"><span>Liability</span><b class="${m.liab>smFree?'loss':''}">£${m.liab.toFixed(2)}</b></div>
+   <div class="kv"><span>${mode==='QB'?'Qualifying loss':'You keep'}</span><b class="${cls(worst)}">${mode==='QB'?gbp(worst):gbp(worst,1)+' · '+Math.round(worst/stake*100)+'%'}</b></div>
+   <div class="kv"><span>If the back wins</span><b class="${cls(m.ifBack)}">${gbp(m.ifBack,1)}</b></div>
+   <div class="kv"><span>If the lay wins</span><b class="${cls(m.ifLay)}">${gbp(m.ifLay,1)}</b></div>
+   ${m.liab>smFree?`<div class="kv" style="grid-column:1/-1"><span class="loss">Liability is more than the £${smFree.toFixed(2)} free on Smarkets.</span></div>`:''}`;
+}
+function setMode(m){mode=m;document.querySelectorAll('#mode button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.m===m));calc();}
+$('#mode').addEventListener('click',e=>{const b=e.target.closest('button');if(b)setMode(b.dataset.m);});
+['#c-stake','#c-back','#c-lay','#c-comm'].forEach(id=>$(id).addEventListener('input',calc));
+calc();
+let lastFocus=null;
+function openCalc(ctx){lastFocus=document.activeElement;$('#ctx').textContent=ctx||'';$('#drawer').classList.add('on');$('#scrim').classList.add('on');$('#drawer').setAttribute('aria-hidden','false');
+  setTimeout(()=>(ctx?$('#c-back'):$('#c-stake')).focus(),230);}
+function closeCalc(){$('#drawer').classList.remove('on');$('#scrim').classList.remove('on');$('#drawer').setAttribute('aria-hidden','true');if(lastFocus)lastFocus.focus();}
+$('#calcbtn').addEventListener('click',()=>openCalc());
+$('#close').addEventListener('click',closeCalc);
+$('#scrim').addEventListener('click',closeCalc);
+
+/* offers */
+const steps=['Qualify','Qualifier settles','Free bets arrive','Free bets used'];
+const offers=[
+ {b:'Betfred',n:'Bet £10 Get £50',p:'5 × £10 SNR',stage:3,st:'2 of 5 used, 1 placed',nx:'Use the last 2 by Sat 23:59',v:r2(settled.filter(s=>s.b==='Betfred').reduce((a,s)=>a+s.pl,0)),vl:'banked so far'},
+ {b:'Coral',n:'Bet £5 Get £20',p:'4 × £5 free bets',stage:1,st:'Qualifier placed',nx:'Settles Sat around 16:00',v:r2(open[0].ifLay+evCoral),vl:'expected'},
+ {b:'BetVictor',n:'Bet £10 Get £30',p:'3 × £10 SNR, new account',stage:0,st:'Not started',nx:'Needs a £10 deposit',v:null},
+];
+const doneOct=[...new Set(settled.filter(s=>s.date>=D(10,1)&&s.type==='SNR'&&s.b!=='Betfred').map(s=>s.b))];
+$('#offers').innerHTML=offers.map(o=>`<div class="offer">
+  <div><h3>${o.b} <span>${o.n}</span></h3><p>${o.p}</p></div>
+  <div class="steps" aria-label="Step ${o.stage+1} of 4">${steps.map((s,i)=>`<div class="${i<o.stage?'d':i===o.stage?'c':''}">${s}</div>`).join('')}</div>
+  <div class="st"><b>${o.st}</b><span>${o.nx}</span></div>
+  <div class="v">${o.v==null?`<button class="btn" data-toast="BetVictor Bet £10 Get £30 started">Start</button>`:`<b class="${cls(o.v)}">${gbp(o.v,1)}</b><small>${o.vl}</small>`}</div></div>`).join('')
+ +`<p class="finished">Finished this month: ${doneOct.map(b=>`${b} <b class="gain">${gbp(r2(settled.filter(s=>s.b===b).reduce((a,s)=>a+s.pl,0)),1)}</b>`).join(', ')}.</p>`;
+
+/* profit chart */
+let rangeDays=0;
+function drawChart(){
+  const svg=$('#chart'), W=svg.clientWidth||700, H=304, L=40, R=64, T=14, mid=168, B=282;
+  const end=now(), proj=D(10,17), start=rangeDays?new Date(end-rangeDays*864e5):D(7,1);
+  const base=r2(settled.filter(s=>s.date<start).reduce((a,s)=>a+s.pl,0));
+  let cum=0; const pts=[]; settled.forEach(s=>{cum+=s.pl; if(s.date>=start) pts.push([s.date,r2(cum)]);});
+  const vis=[[start,base],...pts,[end,total]];
+  const yMax=Math.ceil((total+toCome)/50)*50, yMin=rangeDays?Math.floor(base/50)*50:0;
+  const x=d=>L+(d-start)/(proj-start)*(W-L-R), y=v=>T+(1-(v-yMin)/(yMax-yMin))*(mid-T);
+  const bars=settled.filter(s=>s.date>=start), bMax=Math.max(...bars.map(s=>Math.abs(s.pl)),1);
+  const z=244, yb=v=>z-v/bMax*38;
+  let g='';
+  const step=(yMax-yMin)>200?100:50;
+  for(let v=yMin;v<=yMax;v+=step) g+=`<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--rule)"/><text x="${L-8}" y="${y(v)+3.5}" text-anchor="end">£${v}</text>`;
+  for(let m=6;m<=10;m++){const d=D(m,1); if(d>=start&&d<=proj) g+=`<line x1="${x(d)}" x2="${x(d)}" y1="${T}" y2="${B}" stroke="var(--rule)"/><text x="${x(d)+4}" y="${B+16}">${d.toLocaleDateString('en-GB',{month:'short'})}</text>`;}
+  let p=`M${x(vis[0][0])},${y(vis[0][1])}`; for(let i=1;i<vis.length;i++) p+=`H${x(vis[i][0])}V${y(vis[i][1])}`;
+  const bw=Math.max(2,Math.min(6,(W-L-R)/((proj-start)/864e5)*.7));
+  const bs=bars.map(s=>{const v=s.pl,h=Math.abs(yb(v)-z);return `<rect x="${x(s.date)-bw/2}" y="${v>=0?yb(v):z}" width="${bw}" height="${Math.max(1.5,h)}" fill="${v>=0?'var(--gain)':'var(--loss)'}"><title>${s.ev}: ${gbp(v,1)}</title></rect>`;}).join('');
+  const ex=x(end), ey=y(total), px=x(proj), py=y(total+toCome);
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  svg.innerHTML=`${g}
+   <text x="${L}" y="${mid+22}" style="fill:var(--ink-2)">Each bet: big free-bet wins, small qualifying losses</text>
+   <line x1="${L}" x2="${W-R}" y1="${z}" y2="${z}" stroke="var(--ink-3)"/>${bs}
+   <path d="${p}" fill="none" stroke="var(--ink)" stroke-width="2"/>
+   <line x1="${ex}" x2="${ex}" y1="${T}" y2="${B}" stroke="var(--ink)" stroke-dasharray="2 3"/>
+   <path d="M${ex},${ey}L${px},${py}" fill="none" stroke="var(--gain)" stroke-width="2" stroke-dasharray="3 4"/>
+   <rect x="${ex-4}" y="${ey-4}" width="8" height="8" fill="var(--ink)"/>
+   <rect x="${px-4}" y="${py-4}" width="8" height="8" fill="var(--bg)" stroke="var(--gain)" stroke-width="2"/>
+   <text x="${ex-8}" y="${ey-10}" text-anchor="end" style="fill:var(--ink);font-weight:600">£${total.toFixed(2)} today</text>
+   <text x="${px+8}" y="${py+4}" style="fill:var(--gain);font-weight:600">£${(total+toCome).toFixed(0)}</text>`;
+}
+$('#range').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;rangeDays=+b.dataset.r;document.querySelectorAll('#range button').forEach(x=>x.setAttribute('aria-pressed',x===b));drawChart();});
+new ResizeObserver(drawChart).observe($('#chart'));
+$('#stats').innerHTML=[[offersDone,'offers finished'],[gbp(total/offersDone),'average per offer'],[`<span class="loss">${gbp(qbLoss)}</span>`,'qualifying losses, total'],[ret+'%','kept from free bets']].map(([v,l])=>`<div><b>${v}</b><span>${l}</span></div>`).join('');
+
+/* accounts */
+const made=n=>{const r=settled.filter(s=>s.b===n);return r.length?r2(r.reduce((a,s)=>a+s.pl,0)):null;};
+$('#acc').innerHTML=`<thead><tr><th>Account</th><th class="rt">Cash</th><th class="rt">Tied up</th><th class="rt">Free bets</th></tr></thead><tbody>
+ ${accounts.map(a=>`<tr><td>${a.n}<small>${a.kind}${made(a.n)!=null?`, ${gbp(made(a.n),1)} made`:''}</small></td>
+  <td class="rt">${a.cash?'£'+a.cash.toFixed(2):'<span class="m3">£0.00</span>'}</td>
+  <td class="rt">${a.locked?`<span class="${a.kind==='Exchange'?'cl':'cb'}">£${a.locked.toFixed(2)}</span>`:'<span class="m3">—</span>'}</td>
+  <td class="rt">${a.fb||'<span class="m3">—</span>'}</td></tr>`).join('')}
+ <tr><td>First Direct<small>Bank</small></td><td class="rt m3">—</td><td class="rt warn">£${FUND.amt} lent out</td><td class="rt m3">—</td></tr></tbody>`;
+
+/* ledger */
+$('#ledger').innerHTML=`<thead><tr><th>Date</th><th>Event</th><th>Type</th><th>Back</th><th>Lay</th><th>Won</th><th class="rt">Profit</th></tr></thead><tbody>
+ ${settled.slice().reverse().slice(0,8).map(s=>`<tr><td class="m2">${s.date.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}</td>
+  <td>${s.ev}<small>${s.b}, ${s.offer}</small></td>
+  <td class="m2">${s.type==='QB'?'Qualifier':'Free bet SNR'}</td>
+  <td><span class="cb">${s.stake.toFixed(2)} @ ${s.back.toFixed(2)}</span></td>
+  <td><span class="cl">${s.ls.toFixed(2)} @ ${s.lay.toFixed(2)}</span></td>
+  <td class="m2">${s.won==='back'?'Back':'Lay'}</td>
+  <td class="rt ${cls(s.pl)}" style="font-weight:600">${gbp(s.pl,1)}</td></tr>`).join('')}</tbody>`;
+
+/* live */
+function tick(){const n=now();
+  $('#clock').innerHTML=`${n.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}<br>${n.toLocaleTimeString('en-GB')}`;
+  const d=$('#drain'); if(d) d.style.width=Math.max(0,(exp-n)/life*100)+'%';
+  document.querySelectorAll('[data-cd]').forEach(e=>e.textContent=until(exp));}
+tick(); setInterval(tick,1000);
+
+/* interactions */
+document.addEventListener('click',e=>{
+  const t=e.target.closest('[data-toast]'); if(t) toast(t.dataset.toast);
+  const dn=e.target.closest('[data-done]');
+  if(dn){const row=dn.closest('.row');row.classList.add('done');dn.outerHTML=`<button class="btn" data-undo>Undo</button>`;toast(dn.dataset.done);}
+  const un=e.target.closest('[data-undo]');
+  if(un){const row=un.closest('.row');row.classList.remove('done');toast('Undone');un.outerHTML=row.querySelector('h3').textContent.startsWith('Withdraw')?`<button class="btn" data-done="Logged as pending withdrawals">Mark withdrawn</button>`:`<button class="btn" data-done="Reminder set for Sat 10 Oct, 19:45">Remind me Sat</button>`;}
+  if(e.target.closest('[data-fill]')){setMode('SNR');$('#c-stake').value='10';$('#c-back').value='';$('#c-lay').value='';calc();
+    openCalc('Betfred £10 free bet, stake not returned. Add the odds from your oddsmatcher.');}
+  const a=e.target.closest('a[href^="#"]'); if(a){e.preventDefault(); if(!a.closest('.wm')) toast(a.textContent.replace(/\d+$/,'').trim()+' would open here');}
+});
+$('#search').addEventListener('click',()=>toast('Search would open here'));
+const nm=$('#newmenu');
+nm.innerHTML=[['Position','P'],['Deposit','D'],['Withdrawal','W'],['Offer','O'],['Free bet','F'],['Account','A']].map(([l,k])=>`<button data-toast="New ${l.toLowerCase()} form would open here">${l}<kbd>${k}</kbd></button>`).join('');
+$('#newbtn').addEventListener('click',e=>{e.stopPropagation();nm.hidden=!nm.hidden;$('#newbtn').setAttribute('aria-expanded',!nm.hidden);});
+document.addEventListener('click',e=>{if(!e.target.closest('.newwrap')){nm.hidden=true;$('#newbtn').setAttribute('aria-expanded','false');}});
+document.addEventListener('keydown',e=>{
+  const typing=/INPUT|TEXTAREA/.test(document.activeElement.tagName);
+  if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();toast('Search would open here');}
+  if(e.key==='Escape'){nm.hidden=true;if($('#drawer').classList.contains('on'))closeCalc();}
+  if(!typing&&!e.metaKey&&!e.ctrlKey&&e.key.toLowerCase()==='c'){e.preventDefault();openCalc();}
+});
+
+/* theme */
+const order=['auto','light','dark']; let th='auto';
+try{th=localStorage.getItem('mb-theme')||'auto';}catch(e){}
+function applyTheme(){const r=document.documentElement; if(th==='auto')r.removeAttribute('data-theme'); else r.setAttribute('data-theme',th);
+  $('#theme').innerHTML=ic(I[th==='auto'?'auto':th==='light'?'sun':'moon'],17); $('#theme').title='Theme: '+th;}
+$('#theme').addEventListener('click',()=>{th=order[(order.indexOf(th)+1)%3];try{localStorage.setItem('mb-theme',th);}catch(e){}applyTheme();drawChart();});
+applyTheme();
+})();
+</script>
+
+</body>
+</html>

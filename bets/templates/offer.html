@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% from "macros.html" import money, pill, csrf_field, position_item, offer_terms_fields with context %}
+{% block title %}{{ o.title }} · Matched betting{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="{{ u('/offers') }}">Offers</a></p>
+<h1 class="page-title">{{ o.title }}</h1>
+<section class="stats">
+  <div class="stat"><span>Status</span><b>{{ OFFER_STATUS_LABELS[life.status] }}</b><small>{{ life.stage.replace('_', ' ') }}{% if life.next_action %} · next: {{ life.next_action }}{% endif %}</small></div>
+  <div class="stat"><span>Reward</span><b>{{ o.reward or '—' }}</b><small>value {{ fmt(o.reward_value_pence) }}</small></div>
+  <div class="stat"><span>Realised so far</span>{{ money(realised, True) }}<small>qualifying + reward conversion</small></div>
+  <div class="stat"><span>Deadline</span><b>{{ local(o.expires_at) }}</b><small>{% if o.expires_at %}{{ relative(o.expires_at) }} · <a href="{{ u('/calendar/offer/' ~ o.id ~ '.ics') }}">Add to Calendar</a>{% endif %}</small></div>
+</section>
+{% if life.status in ('not_started', 'qualifying', 'awaiting_reward') and o.reward_kind and o.reward_each_pence %}
+<section class="panel">
+  <h2>Reward arrived?</h2>
+  <form method="post" action="{{ u('/offers/' ~ o.id ~ '/reward') }}" class="row-actions" data-confirm="Record the reward as arrived?">{{ csrf_field() }}
+    {% if o.reward_kind != 'cash' %}<label>Expires <input type="datetime-local" name="expires_at"></label>{% endif %}
+    <button class="btn primary">{{ 'Add ' ~ o.reward_count ~ ' × ' ~ fmt(o.reward_each_pence)|replace('.00', '') ~ ' ' ~ o.reward_kind|upper ~ ' free bets' if o.reward_kind != 'cash' else 'Record ' ~ fmt(o.reward_each_pence) ~ ' cash reward' }}</button>
+  </form>
+  <p class="small muted">{% if o.reward_kind != 'cash' %}Creates the free bets linked to this offer{% if o.reward_expiry_days %}, expiring {{ o.reward_expiry_days }} days after they arrive unless you set a date{% endif %}. The offer then moves on by itself as you use them.{% else %}Adds a promotion reward to {{ o.account_id and 'the bookmaker' }} and completes the offer.{% endif %}</p>
+</section>
+{% endif %}
+<section class="panel">
+  <p><b>Requirement:</b> {{ o.requirement or '—' }}{% if o.qualifying_stake_pence or o.min_odds %} · <b>Terms:</b> {% if o.qualifying_stake_pence %}stake {{ fmt(o.qualifying_stake_pence) }}{% endif %}{% if o.min_odds %} at odds {{ o.min_odds }}+{% endif %}{% endif %}</p>
+  {% if o.notes %}<p class="muted">{{ o.notes }}</p>{% endif %}
+  <p class="small">Reward due when {{ {'bet_placed': 'the qualifying bet is placed', 'bet_fully_matched': 'the qualifier is placed and hedged', 'bet_settled': 'the qualifier settles', 'bet_lost': 'the qualifier loses', 'other': 'the bookmaker confirms it'}[life.trigger] }}{% if life.qualified %} · qualified {{ local(life.qualified_at) if life.qualified_at else '' }}{% endif %}. The status follows the records.</p>
+  <form method="post" action="{{ u('/offers/' ~ o.id) }}" class="cols3">
+    {{ csrf_field() }}<input type="hidden" name="action" value="status">
+    <label>Close <select name="status"><option value="follow">{{ 'Reopen: follow the records' if o.status in ('complete', 'expired', 'abandoned') and life.stage in ('completed', 'expired', 'void') else 'Keep following the records' }}</option>{% for k in ('complete', 'expired', 'abandoned') %}<option value="{{ k }}" {{ 'selected' if o.status == k }}>{{ OFFER_STATUS_LABELS[k] }}</option>{% endfor %}</select></label>
+    <button class="btn">Update</button>
+  </form>
+  {% if life.status in ('not_started', 'qualifying') and not life.qualified %}<form method="post" action="{{ u('/offers/' ~ o.id) }}" class="row-actions" data-confirm="Record that the bookmaker shows the qualifier as done?">{{ csrf_field() }}<input type="hidden" name="action" value="qualified"><button class="btn s">Bookmaker shows it qualified</button></form>{% endif %}
+  <p class="row-actions"><a class="btn" href="{{ u('/quick-add') }}?offer_id={{ o.id }}{% if o.account_id %}&back_account={{ o.account_id }}{% endif %}">+ Position for this offer</a>
+    <a class="btn" href="{{ u('/free-bets') }}#add">+ Free bet reward</a></p>
+</section>
+<section class="panel"><h2>Positions</h2>{% for p in positions %}{{ position_item(p) }}{% else %}<p class="muted">None yet.</p>{% endfor %}</section>
+<section class="panel"><h2>Free bets</h2>
+  <ul class="list">{% for f in free_bets %}<li class="split"><span>{{ f.account }} {{ f.kind|upper }} · {{ f.status }}</span>{{ money(f.face_value_pence) }}</li>{% else %}<li class="muted">None.</li>{% endfor %}</ul>
+  {% if cash %}<h3>Cash rewards</h3><ul class="list">{% for e in cash %}<li class="split"><span>{{ e.account }} · {{ e.description }}</span>{{ money(e.amount_pence, True) }}</li>{% endfor %}</ul>{% endif %}
+</section>
+<details class="panel"><summary>Edit offer</summary>
+  <form method="post" action="{{ u('/offers/' ~ o.id) }}" class="cols2">
+    {{ csrf_field() }}
+    <label class="span2">Title <input name="title" value="{{ o.title }}" required></label>
+    <label>Bookmaker <select name="account_id"><option value="">—</option>{% for a in bookmakers %}<option value="{{ a.id }}" {{ 'selected' if o.account_id == a.id }}>{{ a.name }}</option>{% endfor %}</select></label>
+    <label>Type <select name="offer_type">{% for k, label in OFFER_TYPE_LABELS.items() %}<option value="{{ k }}" {{ 'selected' if o.offer_type == k }}>{{ label }}</option>{% endfor %}</select></label>
+    <label>Requirement <input name="requirement" value="{{ o.requirement }}"></label>
+    <label>Reward <input name="reward" value="{{ o.reward }}"></label>
+    <label>Reward value £ <input name="reward_value" inputmode="decimal" value="{{ plain(o.reward_value_pence) }}"></label>
+    {{ offer_terms_fields(o) }}
+    <label>Starts <input type="datetime-local" name="starts_at" value="{{ to_input(o.starts_at) }}"></label>
+    <label>Expires <input type="datetime-local" name="expires_at" value="{{ to_input(o.expires_at) }}"></label>
+    <label class="span2">Notes <textarea name="notes" rows="2">{{ o.notes }}</textarea></label>
+    <button class="btn">Save</button>
+  </form>
+</details>
+<details class="panel"><summary>History</summary><ul class="audit">{% for a in audit %}<li><span class="muted small">{{ local(a.at) }}</span> {{ a.action }}{% if a.note %} — {{ a.note }}{% endif %}<br><code class="small">{{ a.before_json or '' }} → {{ a.after_json or '' }}</code></li>{% endfor %}</ul></details>
+{% endblock %}

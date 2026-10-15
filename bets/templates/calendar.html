@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Calendar · Matched betting{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Calendar</h1><span class="aside"><a class="btn s" href="{{ u('/calendar.ics') }}">Add all to your calendar</a></span></div>
+<p class="note">Kick-offs of open positions, free bet expiries, offer deadlines and money due back to your bank, for the next {{ days }} days, plus the day any promotional commission rate ends.</p>
+{% for d in day_list %}
+<section class="{{ 'first' if loop.first else '' }} cal-day">
+  <div class="grp">{{ d.label }} <i>{{ d.date }}</i><span class="cnt">{{ d.events|length }}</span></div>
+  {% for e in d.events %}
+  <a class="row" href="{{ u(e.href) }}">
+    <div class="kind {{ e.cls }}"><b>{{ e.kind }}</b><span>{{ e.time }}</span></div>
+    <div><h3>{{ e.title }}</h3>{% if e.text %}<p>{{ e.text }}</p>{% endif %}</div>
+    <div class="ac"></div>
+  </a>
+  {% endfor %}
+</section>
+{% else %}
+<section class="first"><div class="empty"><b>Nothing coming up</b>Kick-offs, expiries and deadlines appear here as you record them.</div></section>
+{% endfor %}
+{% endblock %}

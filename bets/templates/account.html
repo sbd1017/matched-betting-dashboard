@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% from "macros.html" import money, pill, csrf_field, history_list with context %}
+{% block title %}{{ a.name }} · Matched betting{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="{{ u('/accounts') }}">Accounts</a></p>
+<h1 class="page-title">{{ a.name }}</h1>
+{% if a.kind != 'bank' %}<p class="muted">{{ a.kind|capitalize }} · {% if a.standing == 'ok' %}<span class="pill ok">In good standing</span>{% else %}<span class="pill {{ 'bad' if a.standing == 'closed' else 'warn' }}">{{ a.standing|capitalize }}{% if a.standing_at %} since {{ local(a.standing_at, '%-d %b') }}{% endif %}</span>{% endif %}
+  · {% if a.verified %}<span class="pill ok">Verified</span>{% else %}<span class="pill">Not verified</span>{% endif %}
+  {% if signups %} · sign-up offer {{ 'done' if signups[0].status == 'complete' else signups[0].status.replace('_', ' ') }}{% endif %}</p>{% endif %}
+{% if promo %}<p class="muted">Commission <b>{{ promo.rate }}</b> · <span class="{{ 'warn-text' if promo.level in ('urgent', 'expired') else '' }}">{% if promo.expired %}Promotional rate expired {{ promo.date }} · may be out of date · <a href="#edit">update it</a>{% else %}Promotional rate · expires {{ promo.date }}{% endif %}</span></p>{% endif %}
+<section class="stats">
+  {% if a.kind == 'bank' %}
+  <div class="stat"><span>Net sent to betting</span>{{ money(-a.balance) }}<small>funding source (not bankroll)</small></div>
+  <div class="stat"><span>Temporary funding out</span>{{ money(a.temporary_outstanding) }}<small>still to come back</small></div>
+  {% else %}
+  {% if a.kind == 'exchange' %}
+  <div class="stat hero"><span>Available cash</span>{{ money(a.available) }}<small>what the exchange shows as available</small></div>
+  <div class="stat"><span>Lay liability reserved</span>{{ money(a.liability) }}<small>held for open lay bets · not a loss</small></div>
+  <div class="stat"><span>Total funds</span>{{ money(a.balance) }}<small>available + liability (the ledger)</small></div>
+  {% else %}
+  <div class="stat hero"><span>Cash balance</span>{{ money(a.balance) }}<small>{{ a.kind|capitalize }} · per ledger</small></div>
+  <div class="stat"><span>Unsettled stakes</span>{{ money(a.unsettled_stakes) }}<small>in open back bets (already left the balance)</small></div>
+  {% endif %}
+  {% endif %}
+</section>
+{% if a.kind != 'bank' %}
+<section class="panel">
+  <h2>Check the balance</h2>
+  <form method="post" action="{{ u('/accounts/' ~ a.id ~ '/reconcile') }}" class="cols3" data-confirm="Record this balance check?">{{ csrf_field() }}
+    {% if a.kind == 'exchange' %}<fieldset class="span-all"><legend class="small">Which figure did you read?</legend>
+      <label class="check"><input type="radio" name="basis" value="available" checked> Available balance <span class="m2 small">(app expects {{ fmt(expected.available) }})</span></label>
+      <label class="check"><input type="radio" name="basis" value="total"> Total incl. liability <span class="m2 small">(app expects {{ fmt(expected.total) }})</span></label></fieldset>{% endif %}
+    <label>Balance shown £ <input name="actual" inputmode="decimal" required placeholder="{{ plain(expected.available if a.kind == 'exchange' else a.balance) }}"></label>
+    <label>Note <input name="note" placeholder="what you think caused any difference"></label>
+    <input type="hidden" name="adjust_shown" value="1">
+    <label class="check span-all"><input type="checkbox" name="adjust" value="1"> If it differs, record the difference as a profit/loss adjustment <span class="m2 small">(otherwise it is kept as unresolved, nothing posted, and listed under Issues)</span></label>
+    <button class="btn">Record</button>
+  </form>
+  {% if recs %}<ul class="list">{% for r in recs %}<li class="split"><span>#{{ r.id }} · {{ r.at }} · {{ r.figure_observed }} {{ r.observed }} (app expected {{ r.app_expected }}){% if r.note %} · {{ r.note }}{% endif %}
+      {{ pill(r.outcome, 'warn' if r.outcome == 'unresolved' else ('' if r.outcome in ('matched', 'reversed', 'dismissed') else 'info')) }}
+      {% if r.outcome == 'adjusted' %}<a class="small" href="{{ u('/ops/reverse_reconciliation') }}?reconciliation_id={{ r.id }}&next=/accounts/{{ a.id }}">Reverse…</a>{% endif %}
+      {% if r.outcome == 'unresolved' %}<a class="small" href="{{ u('/ops/resolve_reconciliation') }}?reconciliation_id={{ r.id }}&action=record_adjustment&next=/accounts/{{ a.id }}">Record as P&amp;L…</a> · <a class="small" href="{{ u('/ops/resolve_reconciliation') }}?reconciliation_id={{ r.id }}&action=dismiss&next=/accounts/{{ a.id }}">Dismiss…</a>{% endif %}</span>
+      <span class="{{ 'm3' if r.outcome in ('reversed', 'dismissed', 'unresolved') else '' }}">{{ r.difference }}</span></li>{% endfor %}</ul>{% endif %}
+  <p class="small muted">A difference is only profit or loss when you say so. Exchanges: “available” excludes the lay liability they hold back; recording it as the total would create a fake loss.</p>
+</section>
+{% endif %}
+<section class="panel">
+  <h2>Ledger <a class="small" href="{{ u('/ledger') }}?account={{ a.id }}">Filter in ledger</a></h2>
+  <table class="table">
+    <thead><tr><th>When</th><th>Type</th><th>Detail</th><th class="num">Amount</th><th class="num">Balance</th></tr></thead>
+    <tbody>{% for e in entries %}<tr><td>{{ local(e.at) }}</td><td>{{ CATEGORY_LABELS[e.category] }}</td><td class="small">{{ e.description }}{% if e.position_id %} <a href="{{ u('/positions/' ~ e.position_id) }}">#{{ e.position_id }}</a>{% endif %}</td><td class="num">{{ money(e.amount_pence, True) }}</td><td class="num">{{ fmt(e.running) }}</td></tr>
+    {% else %}<tr><td colspan="5" class="muted">No entries.</td></tr>{% endfor %}</tbody>
+  </table>
+</section>
+<details class="panel"><summary>History</summary>{{ history_list(history_of('account', a.id)) }}</details>
+<details class="panel" id="edit"{{ ' open' if edit else '' }}><summary>Edit account</summary>
+  <form method="post" action="{{ u('/accounts/' ~ a.id) }}" class="cols3">{{ csrf_field() }}
+    <label>Name <input name="name" value="{{ a.name }}"></label>
+    {% if a.kind == 'exchange' %}<label>Commission % <input name="commission" value="{{ (a.commission_bp / 100)|string }}"></label>
+    <label>Promotional rate ends <input type="date" name="commission_expires" value="{{ promo_date_input(a.commission_expires_at) }}"><input type="hidden" name="commission_expires_shown" value="1"></label>{% endif %}
+    {% if a.kind != 'bank' %}<label>Standing <select name="standing">{% for k, label in (('ok', 'Fine'), ('restricted', 'Restricted (gubbed)'), ('closed', 'Closed')) %}<option value="{{ k }}" {{ 'selected' if a.standing == k }}>{{ label }}</option>{% endfor %}</select></label>
+    <label class="check"><input type="hidden" name="verified_shown" value="1"><input type="checkbox" name="verified" value="1" {{ 'checked' if a.verified }}> Verified</label>{% endif %}
+    <label>Active <select name="active"><option value="1" {{ 'selected' if a.active }}>Active</option><option value="0" {{ 'selected' if not a.active }}>Inactive</option></select></label>
+    <label class="span2">Notes <input name="notes" value="{{ a.notes }}"></label>
+    <button class="btn">Save</button>
+  </form>
+  {% if a.kind == 'exchange' %}<p class="small muted">Promotional rate ends: leave it blank if the rate has no end date. Saving a new commission after the promotion has ended clears the date.</p>{% endif %}
+</details>
+{% endblock %}

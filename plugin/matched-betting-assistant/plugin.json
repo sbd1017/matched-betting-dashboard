@@ -1,0 +1,37 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "matched-betting-assistant",
+  "version": "1.4.0",
+  "description": "Run matched betting with your private dashboard: plan bets with server-side calculations (multi-outcome hedges, price drift, validation, funding), record placements and fills atomically from the user's confirmations, settle, reconcile rewards and answer \"what should I do now?\"; plus intake and safe, audited maintenance of records.",
+  "author": {
+    "name": "Your name"
+  },
+  "homepage": "https://example.com/bets/",
+  "license": "UNLICENSED",
+  "keywords": [
+    "matched betting",
+    "data entry",
+    "personal"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Matched Betting Assistant",
+        "shortDescription": "Plan, record and maintain matched-betting records",
+        "longDescription": "Send screenshots and odds: the dashboard plans the bet (lay stakes, outcome table, retention), validates it against the offer, free bet and exchange funds, and records what you placed atomically once you confirm it is fully matched. It tracks partial fills, temporary funding, expected rewards and next actions. Corrections follow the permissions you set; deletions and unusual results always wait for you. Every change is audited. It never places bets.",
+        "developerName": "Your name",
+        "category": "Productivity",
+        "capabilities": [
+          "Read",
+          "Write"
+        ],
+        "websiteURL": "https://example.com/bets/",
+        "defaultPrompt": [
+          "What should I do now?",
+          "Plan this free bet from my screenshots",
+          "Audit my dashboard and fix anything inconsistent"
+        ]
+      }
+    }
+  }
+}

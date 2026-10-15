@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf_field with context %}
+{% block title %}Settings · Matched betting{% endblock %}
+{% block content %}
+<h1 class="page-title">Settings</h1>
+<section class="panel" id="onboarding">
+  <h2>Accounts</h2>
+  <ul class="list">{% for a in accounts %}<li class="split"><a href="{{ u('/accounts/' ~ a.id) }}">{{ a.name }}</a><span class="muted small">{{ a.kind }}{% if not a.active %} · inactive{% endif %}</span></li>{% else %}<li class="muted">None yet — add your bookmakers, exchanges and the bank you fund them from.</li>{% endfor %}</ul>
+  <form method="post" action="{{ u('/accounts') }}" class="cols3">{{ csrf_field() }}<input type="hidden" name="from" value="settings">
+    <label>Name <input name="name" required></label>
+    <label>Type <select name="kind"><option value="bookmaker">Bookmaker</option><option value="exchange">Exchange</option><option value="bank">Bank / funding source</option></select></label>
+    <label>Commission % (exchanges) <input name="commission" inputmode="decimal"></label>
+    <label>Money already there £ <input name="opening_balance" inputmode="decimal" placeholder="0"></label>
+    <button class="btn">Add</button>
+  </form>
+  <p class="small muted">"Money already there" is your existing bankroll (capital), not profit.</p>
+</section>
+<section class="panel">
+  <h2>Export</h2>
+  <p class="row-actions"><a class="btn" href="{{ u('/export/ledger.csv') }}">Ledger CSV</a><a class="btn" href="{{ u('/export/positions.csv') }}">Positions CSV</a><a class="btn" href="{{ u('/export/full.json') }}">Full JSON</a><a class="btn" href="{{ u('/calendar.ics') }}">Deadlines (.ics)</a></p>
+</section>
+<section class="panel">
+  <h2>System</h2>
+  <ul class="list">
+    <li>Signed in as <b>{{ username }}</b>. Change the password on the Pi: <code>scripts/set-password.sh</code></li>
+    <li>Database schema version {{ schema }} · {{ backups }} backup(s){% if last_backup %}, latest {{ last_backup }}{% endif %} (kept on the Pi, never public)</li>
+    <li><a href="{{ u('/audit') }}">Audit trail</a></li>
+  </ul>
+</section>
+<section class="panel">
+  <h2>Assistant Intake (ChatGPT)</h2>
+  {% if assistant.enabled %}
+  <p>On — token <code>{{ assistant.id }}</code>, issued {{ local(assistant.created_at) }}. It can submit entries, read your records (if allowed below) and make the corrections its permissions allow; everything else waits for you under <a href="{{ u('/imports') }}">Imports</a>.</p>
+  <form method="post" action="{{ u('/settings/assistant/disable') }}" data-confirm="Turn off assistant access now? The token stops working immediately.">{{ csrf_field() }}<button class="btn danger">Disable assistant access</button></form>
+  {% else %}
+  <p class="muted">Off{% if assistant.id %} (token {{ assistant.id }} disabled {{ local(assistant.disabled_at) }}){% endif %}.</p>
+  {% endif %}
+  <ul class="list small">
+    <li>New or replacement token (shown once): <code>scripts/assistant-token.sh rotate</code> on the Pi</li>
+    <li>OpenAPI description for the GPT's Actions: <code>scripts/assistant-token.sh openapi</code></li>
+  </ul>
+</section>
+<section class="panel" id="permissions">
+  <h2>Assistant permissions</h2>
+  <p>What the Matched Betting Assistant may do with your existing records. Every change is checked, recorded in the audit trail with the assistant as the actor, and can be reviewed under Imports when it waits for you.</p>
+  <form method="post" action="{{ u('/settings/assistant/permissions') }}">{{ csrf_field() }}
+    <label class="check"><input type="checkbox" name="read"{{ ' checked' if perms.read }}> <b>Read records</b> — balances, positions, free bets, transfers, balance checks, ledger, issues (so it can investigate before changing anything)</label>
+    <label>Planning <select name="planning"><option value="auto" {{ 'selected' if perms.planning == 'auto' }}>Apply automatically</option><option value="ask" {{ 'selected' if perms.planning == 'ask' }}>Ask me first</option></select>
+      <small class="muted">bet plans (create, reprice, validate, cancel), calculations, attaching evidence, expecting a reward — no money moves</small></label>
+    <label>Safe edits <select name="safe_edit"><option value="auto" {{ 'selected' if perms.safe_edit == 'auto' }}>Apply automatically</option><option value="ask" {{ 'selected' if perms.safe_edit == 'ask' }}>Ask me first</option></select>
+      <small class="muted">expiry, notes, offer links, linking a free bet to the bet that used it, merging a duplicate free bet, settling with a result you gave, transfer classification, balance checks (never as profit/loss)</small></label>
+    <label>Financial reversals <select name="financial_reverse"><option value="ask" {{ 'selected' if perms.financial_reverse == 'ask' }}>Ask me first</option><option value="auto" {{ 'selected' if perms.financial_reverse == 'auto' }}>Apply automatically</option></select>
+      <small class="muted">reopening or re-settling a settled position, editing a settled bet, reversing a transfer or a balance check's adjustment</small></label>
+    <p><b>Deletions</b> (free bets, positions, offers) always wait for you.</p>
+    <p class="row-actions"><button class="btn">Save</button></p>
+  </form>
+</section>
+
+<section class="panel" id="policy">
+  <h2>Retention policy</h2>
+  <p class="small muted">How bet plans are rated. Free bets: retention % (locked-in result ÷ free bet value); below “reject” a plan is not safe to place. Qualifiers: qualifying loss as % of stake. A plan can set its own minimum.</p>
+  <form method="post" action="{{ u('/settings/retention-policy') }}" class="cols3">{{ csrf_field() }}
+    {% for kind, label in (('snr', 'SNR'), ('sr', 'SR')) %}{% for k in ('excellent', 'very_good', 'acceptable', 'reject_below') %}
+    <label>{{ label }} {{ k.replace('_', ' ') }} % <input name="{{ kind }}_{{ k }}" inputmode="decimal" value="{{ policy[kind][k]|int if policy[kind][k] == policy[kind][k]|int else policy[kind][k] }}"></label>{% endfor %}{% endfor %}
+    {% for k in ('excellent_loss_pct', 'good_loss_pct', 'max_loss_pct') %}<label>Qualifier {{ k.replace('_pct', '').replace('_', ' ') }} % <input name="qualifying_{{ k }}" inputmode="decimal" value="{{ policy.qualifying[k]|int if policy.qualifying[k] == policy.qualifying[k]|int else policy.qualifying[k] }}"></label>{% endfor %}
+    <label>Leave a qualifier unlaid up to £ <input name="qualifying_unhedged_max_loss" inputmode="decimal" value="{{ '%.2f'|format(policy.qualifying.unhedged_max_loss) }}"></label>
+    <button class="btn">Save policy</button>
+  </form>
+</section>
+
+<section class="panel" id="trusted">
+  <h2>Trusted Assistant mode (automatic import)</h2>
+  <p>When ON, entries the <b>Matched Betting Assistant</b> submits for the ticked types are <b>confirmed automatically</b> instead of waiting under Imports — only if they pass the same checks as Confirm and are complete and unremarkable. Anything incomplete, contradictory, unusual (e.g. a large amount), a possible duplicate, or waiting for another pending entry is held for you. Every automatic confirmation is recorded in the audit trail. It records only what you already did; it never places bets.</p>
+  <p><b>Currently {% if trusted.enabled %}ON for {% for k in trusted.kinds %}{{ KIND_TITLES[k] }}{{ ', ' if not loop.last }}{% endfor %}{% else %}OFF{% endif %}.</b></p>
+  <form method="post" action="{{ u('/settings/assistant/auto-confirm') }}">{{ csrf_field() }}
+    <label class="check"><input type="checkbox" name="enabled"{{ ' checked' if trusted.enabled }}> Confirm Matched Betting Assistant entries automatically</label>
+    <p class="small muted">Only for these types:</p>
+    {% for k in KINDS %}<label class="check"><input type="checkbox" name="kinds" value="{{ k }}"{{ ' checked' if k in trusted.kinds }}> {{ KIND_TITLES[k] }}</label>{% endfor %}
+    <p class="row-actions"><button class="btn">Save</button></p>
+  </form>
+</section>
+{% endblock %}

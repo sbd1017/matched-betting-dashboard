@@ -1,0 +1,45 @@
+[Unit]
+Description=Matched betting ledger (https://example.com/bets/)
+Documentation=file:///opt/matched-betting/README.md
+After=network.target
+
+[Service]
+Type=simple
+User=bets
+Group=bets
+WorkingDirectory=/opt/matched-betting
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=BETS_HOST=127.0.0.1
+Environment=BETS_PORT=8760
+ExecStart=/opt/matched-betting/.venv/bin/python -m bets.serve
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/matched-betting/var
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# Only nginx on this host talks to it.
+IPAddressDeny=any
+IPAddressAllow=localhost
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+MemoryMax=256M
+TasksMax=32
+
+[Install]
+WantedBy=multi-user.target

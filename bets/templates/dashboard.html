@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+{% from "macros.html" import money, pill, settle_buttons with context %}
+{% block title %}Dashboard · Matched betting{% endblock %}
+
+{# One bet as an odds cell: back blue (striped when it is a free bet), lay pink. #}
+{% macro odd(l) -%}
+<div class="odd {{ 'lay' if l.side == 'lay' else ('free' if l.free else 'back') }}">
+  <div class="o">{{ l.odds }}</div>
+  <div class="s">{{ fmt(l.stake_pence)|replace('.00', '') if l.free else fmt(l.stake_pence) }}{{ ' free' if l.free else '' }} · {{ l.account }}</div>
+</div>
+{%- endmacro %}
+
+{% macro ladder(p) -%}
+<div class="ladder">
+  {% for l in p.legs %}{{ odd(l) }}{% endfor %}
+  {% if p.if_back is not none %}
+  <div class="outc">
+    {% if p.liability %}<span>Liability <b>{{ fmt(p.liability) }}</b></span>{% endif %}
+    <span>If back wins <b class="{{ 'gain' if p.if_back > 0 else ('loss' if p.if_back < 0 else '') }}">{{ fmt(p.if_back, signed=True) }}</b></span>
+    <span>If lay wins <b class="{{ 'gain' if p.if_lay > 0 else ('loss' if p.if_lay < 0 else '') }}">{{ fmt(p.if_lay, signed=True) }}</b></span>
+  </div>
+  {% endif %}
+</div>
+{%- endmacro %}
+
+{% block content %}
+<h1 class="sr-only">Dashboard</h1>
+<div class="dash">
+
+{% if not has_accounts %}
+<section class="first">
+  <div class="empty"><b>Add your accounts to get started</b>
+    <p>Your bookmakers, exchanges and the bank you fund them from, with any money already in them as an opening balance.</p>
+    <a class="btn k" href="{{ u('/settings') }}#onboarding">Add accounts</a></div>
+</section>
+{% endif %}
+
+{# ------------------------------------------------------------ headline: profit, free to bet, expiry #}
+{% set profit = fmt(s.profit_lifetime, signed=True) %}
+<div class="status" aria-label="At a glance">
+  <div class="stat hero">
+    <span class="k">Realised profit</span>
+    <a class="v hl {{ 'gain' if s.profit_lifetime > 0 else ('loss' if s.profit_lifetime < 0 else '') }}" href="{{ u('/profit') }}?view=all" title="Profit, all time">{{ profit[:-3] }}<span class="p">{{ profit[-3:] }}</span></a>
+    <span class="s"><a class="hl" href="{{ u('/profit') }}?view=month"><b class="{{ 'gain' if s.profit_month > 0 else ('loss' if s.profit_month < 0 else '') }}">{{ fmt(s.profit_month, signed=True) }}</b> this month</a> · <a class="hl" href="{{ u('/profit') }}?view=week"><b class="{{ 'gain' if s.profit_week > 0 else ('loss' if s.profit_week < 0 else '') }}">{{ fmt(s.profit_week, signed=True) }}</b> this week</a></span>
+  </div>
+  <div class="stat">
+    <span class="k">Still to come</span>
+    <span class="v {{ 'gain' if come.total > 0 else '' }}">{{ fmt(come.total, signed=True) }}</span>
+    <span class="s">{{ fmt(come.locked, signed=True) }} locked in open bets · {{ fmt(come.free_bets) }} in free bets{% if come.rewards %} · {{ fmt(come.rewards) }} in {{ come.rewards_count }} reward{{ 's' if come.rewards_count > 1 else '' }} due{% endif %}
+      <br><span class="m3">Free bets at {{ 'your' if come.retention.snr.own else 'a typical' }} {{ come.retention.snr.pct }}% retention</span>
+      {% if come.finished_open %}<br><span class="warn-text">{{ come.finished_open }} finished position{{ 's' if come.finished_open > 1 else '' }} not counted until settled</span>{% endif %}
+      <br><a class="small" href="{{ u('/still-to-come') }}">What makes it up</a></span>
+  </div>
+  {% if expiry %}
+  <div class="stat alert">
+    <span class="k">Free bets expiring</span>
+    <span class="v">{{ relative(expiry.at)|replace('in ', '') }}</span>
+    <span class="s"><b>{{ expiry.title }}, {{ expiry.worth[0] }}</b> · {{ local(expiry.at) }}<br>
+      <a class="btn red" href="{{ u(expiry.action[1]) }}">{{ expiry.action[0] }}</a></span>
+  </div>
+  {% else %}
+  <div class="stat">
+    <span class="k">Free bets held</span>
+    <span class="v">{{ fmt(s.free_bets_value) }}</span>
+    <span class="s">{{ s.free_bets_count }} to use · face value</span>
+  </div>
+  {% endif %}
+  <div class="stat">
+    <span class="k">Available to bet</span>
+    <span class="v">{{ fmt(s.available) }}</span>
+    <span class="s">after {{ fmt(s.lay_liability) }} of lay liability</span>
+  </div>
+</div>
+
+<details class="why">
+  <summary>How these figures are worked out</summary>
+  <ul class="list small">
+    <li><b>Realised profit</b> {{ fmt(s.profit_lifetime, signed=True) }} = every settled result, reward and adjustment, plus the stakes of settled bets. Deposits and withdrawals never count.</li>
+    <li><b>Still to come</b> {{ fmt(come.total, signed=True) }} = {{ fmt(come.locked, signed=True) }} (the worse outcome of each open position) + {{ fmt(come.free_bets) }} (free bets held × {{ come.retention.snr.pct }}% retention{{ ', from your ' ~ come.retention.snr.count ~ ' settled free bets' if come.retention.snr.own else ', a typical figure until you have settled 3' }}){% if come.rewards %} + {{ fmt(come.rewards) }} (rewards you have qualified for){% endif %}.</li>
+    <li><b>Available to bet</b> {{ fmt(s.available) }} = bookmakers {{ fmt(s.bookmaker_balance) }} + exchanges {{ fmt(s.exchange_balance) }} − lay liability held {{ fmt(s.lay_liability) }}.</li>
+    <li><b>Check</b>: betting balances {{ fmt(s.betting_balance) }} = your capital {{ fmt(s.own_capital) }} + temporary funding out {{ fmt(s.temporary_outstanding) }} + retained profit {{ fmt(s.retained_profit, signed=True) }} − stakes in play {{ fmt(s.unsettled_stakes) }}{% if s.consistent %} ✓{% endif %}.</li>
+  </ul>
+  <p class="small"><a href="{{ u('/help') }}">What every figure means</a></p>
+</details>
+
+<div class="cols" id="work">
+  {# ---------------------------------------------------------- up next + free bets #}
+  <div>
+    <section class="first">
+      {% set needs = up_next[0]['items']|length %}
+      <div class="sh"><h2>Up next</h2><span class="n">{{ needs }} need{{ 's' if needs == 1 else '' }} you</span><span class="aside"><a href="{{ u('/calendar.ics') }}">Add to Calendar</a></span></div>
+      {% for g in up_next %}
+      <div class="grp">{{ g.label }}{% if g.date %} <i>{{ g.date }}</i>{% endif %}{% if g['items'] and g.label != 'Needs you' %}<span class="cnt">{{ g['items']|length }}</span>{% endif %}</div>
+      {% for r in g['items'] %}
+      <div class="row{{ ' top' if r.pos else '' }}">
+        <div class="kind {{ r.cls }}"><b>{{ r.kind }}</b><span>{{ r.when }}</span></div>
+        <div>
+          <h3>{% if r.pos %}<a href="{{ u('/positions/' ~ r.pos.id) }}">{{ r.title }}</a>{% else %}{{ r.title }}{% endif %}</h3>
+          <p>{{ r.text }}</p>
+          {% if r.pos and r.pos.legs %}{{ ladder(r.pos) }}{% endif %}
+        </div>
+        <div class="ac">
+          {% if r.worth %}<div class="worth"><b>{{ r.worth[0] }}</b><small>{{ r.worth[1] }}</small></div>{% endif %}
+          {% if r.reward_offer %}<form method="post" action="{{ u('/offers/' ~ r.reward_offer ~ '/reward') }}" class="settle"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="next" value="{{ u('/') }}"><button class="btn s k">It arrived</button></form>{% endif %}
+          {% if r.arrived %}<form method="post" action="{{ u('/transfers/' ~ r.arrived ~ '/arrived') }}" class="settle"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="next" value="{{ u('/') }}"><button class="btn s">It arrived</button></form>{% endif %}
+          {% if r.snooze %}<form method="post" action="{{ u('/withdrawals/snooze') }}" class="settle"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="accounts" value="{{ r.snooze|join(',') }}"><button class="btn s" title="Hide for 14 days">Not now</button></form>{% endif %}
+          {% if r.kind == 'Started' and r.pos %}{{ settle_buttons(r.pos.id, u('/')) }}
+          {% elif r.action %}<a class="btn{{ ' k' if r.action[2] else ' s' }}{{ ' opt' if r.pos and not r.action[2] else '' }}" href="{{ r.action[1] if r.action[1].startswith('#') else u(r.action[1]) }}">{{ r.action[0] }}</a>{% endif %}
+        </div>
+      </div>
+      {% else %}
+      <div class="row nokind"><div><p class="m2">{{ 'Nothing needs you right now.' if g.label == 'Needs you' else 'Nothing scheduled.' }}</p></div><div class="ac"></div></div>
+      {% endfor %}
+      {% endfor %}
+      {% if up_next|length == 1 %}<div class="row nokind"><div><p class="m2">No open bets or deadlines coming up.</p></div><div class="ac"><a class="btn s" href="{{ u('/quick-add') }}">Quick add</a></div></div>{% endif %}
+    </section>
+
+    <section id="free-bets-held">
+      <div class="sh"><h2><a href="{{ u('/free-bets') }}">Free bets</a></h2><span class="n">{{ s.free_bets_count }} · {{ fmt(s.free_bets_value) }}</span></div>
+      {% for f in free_bets[:8] %}
+      {% set due = f.expires_at and f.expires_at <= soon %}
+      <a class="fb" href="{{ u('/quick-add') }}?kind=free_bet_{{ f.kind }}&free_bet_id={{ f.id }}&back_account={{ f.account_id }}">
+        <span class="amt">{{ fmt(f.face_value_pence)|replace('.00', '') }}</span>
+        <div><h3>{{ f.account }} <span>{{ f.kind|upper }}</span></h3>
+          <p>{{ f.notes|truncate(90) if f.notes else 'No restrictions noted' }}</p>
+          <p class="{{ 'loss' if due else '' }}">{% if f.expires_at %}Expires {{ local(f.expires_at) }}{% else %}No expiry recorded{% endif %}</p></div>
+        <span class="worth"><span class="btn s">Use</span></span>
+      </a>
+      {% else %}<div class="empty">No free bets waiting. <a href="{{ u('/free-bets') }}#add">Add one</a></div>{% endfor %}
+    </section>
+  </div>
+
+  {# ---------------------------------------------------------- your money + latest ledger #}
+  <div>
+    <section class="first">
+      {% set ex_free = [s.exchange_balance - s.lay_liability, 0]|max %}
+      {% set all_in = ex_free + s.lay_liability + [s.bookmaker_balance, 0]|max + s.unsettled_stakes %}
+      <div class="sh"><h2><a href="{{ u('/accounts') }}">Your money</a></h2></div>
+      <div class="total"><b>{{ fmt(s.betting_balance + s.unsettled_stakes) }}</b><span>in betting accounts, counting stakes in play</span></div>
+      {% if s.temporary_outstanding %}<div class="loanbar"><span class="line" data-of="{{ s.temporary_outstanding }}/{{ all_in }}"></span><span class="txt">{{ fmt(s.temporary_outstanding) }} borrowed</span></div>{% endif %}
+      {% if all_in > 0 %}
+      <div class="blocks" role="img" aria-label="How your money is split">
+        <div class="blk b-lay" data-v="{{ ex_free }}" title="Free on exchanges"></div>
+        <div class="blk b-lay-h" data-v="{{ s.lay_liability }}" title="Lay liability held"></div>
+        <div class="blk b-back" data-v="{{ [s.bookmaker_balance, 0]|max }}" title="Cash at bookmakers"></div>
+        <div class="blk b-back-h" data-v="{{ s.unsettled_stakes }}" title="Stakes in play"></div>
+      </div>
+      {% endif %}
+      <div class="mlist">
+        <div class="mrow"><i class="b-lay"></i><span>Free on exchanges</span><b>{{ fmt(ex_free) }}</b></div>
+        <div class="mrow"><i class="b-lay-h"></i><span>Lay liability held</span><b>{{ fmt(s.lay_liability) }}</b></div>
+        <div class="mrow"><i class="b-back"></i><span>Cash at bookmakers</span><b>{{ fmt(s.bookmaker_balance) }}</b></div>
+        <div class="mrow"><i class="b-back-h"></i><span>Stakes in play<small>open back bets</small></span><b>{{ fmt(s.unsettled_stakes) }}</b></div>
+        <div class="mrow loan"><i class="loan"></i><span>Temporary funding out<small>to return to your bank</small></span><b>{{ fmt(s.temporary_outstanding) }}</b></div>
+      </div>
+      <p class="note">Your capital {{ fmt(s.own_capital) }} · withdrawn from bankroll {{ fmt(s.bankroll_withdrawn) }}</p>
+    </section>
+
+    <section id="checks">
+      <div class="sh"><h2><a href="{{ u('/ledger') }}">Ledger</a></h2>{% if s.consistent %}{{ pill('All ' ~ s.checks|length ~ ' checks pass', 'ok') }}{% else %}{{ pill('Checks need attention', 'warn') }}{% endif %}<span class="aside"><a href="{{ u('/ledger') }}">View ledger</a></span></div>
+      {% if not s.consistent or s.warnings %}
+      <ul class="checks">{% for c in s.checks if not c.ok %}<li class="{{ 'warn' if c.warning else 'bad' }}">{{ c.name }}{% if c.detail %}<br><span class="small muted">{{ c.detail }}</span>{% endif %}</li>{% endfor %}</ul>
+      {% endif %}
+      <div class="tw"><table class="compact">
+        <tbody>
+        {% for e in recent_ledger %}
+        <tr><td class="m2">{{ local(e.at, '%a %-d %b') }}</td><td>{{ e.account }} <span class="m3">{{ CATEGORY_LABELS[e.category] }}</span></td><td class="rt">{{ money(e.amount_pence, True) }}</td></tr>
+        {% else %}<tr><td class="m2">No movements yet.</td></tr>{% endfor %}
+        </tbody>
+      </table></div>
+    </section>
+  </div>
+</div>
+
+{# ------------------------------------------------------------ offers #}
+{% if offers_waiting %}
+<section>
+  {% set stage = {'qualifying': 0, 'awaiting_reward': 1, 'reward_received': 2, 'converting': 3} %}
+  <div class="sh"><h2><a href="{{ u('/offers') }}">Offers in progress</a></h2><span class="n">{{ offers_waiting|length }} running</span></div>
+  {% for o in offers_waiting[:8] %}
+  {% set st = stage.get(o.status, 0) %}
+  <a class="offer" href="{{ u('/offers/' ~ o.id) }}">
+    <div><h3>{{ o.title }}</h3><p>{{ o.account or 'Any bookmaker' }}{% if o.expires_at %} · ends {{ local(o.expires_at) }}{% endif %}</p></div>
+    <div class="steps" aria-label="Step {{ st + 1 }} of 4">{% for label in ('Qualify', 'Awaiting reward', 'Reward received', 'Using reward') %}<div class="{{ 'd' if loop.index0 < st else ('c' if loop.index0 == st else '') }}">{{ label }}</div>{% endfor %}</div>
+    <div class="st"><b>{{ OFFER_STATUS_LABELS[o.status] }}</b></div>
+    <div class="v">{% if o.reward_value_pence %}<b>{{ fmt(o.reward_value_pence) }}</b><small>reward</small>{% endif %}</div>
+  </a>
+  {% endfor %}
+</section>
+{% endif %}
+
+{# ------------------------------------------------------------ recently settled #}
+<section>
+  <div class="sh"><h2><a href="{{ u('/positions?status=settled') }}">Recently settled</a></h2></div>
+  <div class="tw"><table class="compact">
+    <thead><tr><th>Settled</th><th>Event</th><th>Back</th><th>Lay</th><th class="rt">Result</th></tr></thead>
+    <tbody>
+    {% for p in recent_settled %}
+    <tr class="go">
+      <td class="m2">{{ local(p.settled_at, '%a %-d %b') }}</td>
+      <td><a class="ev" href="{{ u('/positions/' ~ p.id) }}">{{ p.event }}</a> <span class="m3">{{ p.selection or '' }}</span></td>
+      <td>{% for l in p.legs if l.side == 'back' %}<span class="lg"><span class="cb">{{ l.odds }}</span> {{ l.account }} {{ fmt(l.stake_pence) }}{{ ' free' if l.free else '' }}</span>{% endfor %}</td>
+      <td>{% for l in p.legs if l.side == 'lay' %}<span class="lg"><span class="cl">{{ l.odds }}</span> {{ l.account }} {{ fmt(l.stake_pence) }}</span>{% endfor %}</td>
+      <td class="rt">{{ money(p.pnl, True) }}</td>
+    </tr>
+    {% else %}<tr><td class="m2" colspan="5">Nothing settled yet.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</section>
+
+</div>
+{% endblock %}

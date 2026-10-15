@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% from "macros.html" import pill, csrf_field, outcome_table, evidence_list, history_list with context %}
+{% block title %}Plan #{{ p.id }} · Matched betting{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="{{ u('/plans') }}">Bet plans</a>{% if p.offer %} · <a href="{{ u('/offers/' ~ p.offer.id) }}">{{ p.offer.title }}</a>{% endif %}{% if p.position_id %} · <a href="{{ u('/positions/' ~ p.position_id) }}">Position #{{ p.position_id }}</a>{% endif %}</p>
+<div class="page-head"><h1>{{ p.event }}</h1><span class="aside">{{ pill(p.status_title, 'ok' if p.status in ('fully_matched', 'settled', 'converted_to_position', 'ready_to_place') else ('warn' if p.status in ('bookmaker_placed', 'exchange_partially_matched', 'validated') else '')) }}</span></div>
+<p class="note">{{ p.selection or '—' }}{% if p.market %} · {{ p.market }}{% endif %} · {{ KIND_LABELS[p.type] }}{% if p.event_at %} · {{ nice_time(p.event_at) }}{% endif %}{% if p.free_bet %} · free bet #{{ p.free_bet.id }} £{{ p.free_bet.value }} {{ p.free_bet.type|upper }} ({{ p.free_bet.status }}{% if p.free_bet.expires_at %}, expires {{ nice_time(p.free_bet.expires_at) }}{% endif %}){% endif %}</p>
+{% set steps = ['Plan', 'Validated', 'Bookmaker placed', 'Lay matched', 'Settled'] %}
+{% set st = {'draft': 0, 'validated': 1, 'ready_to_place': 1, 'bookmaker_placed': 2, 'exchange_partially_matched': 2, 'fully_matched': 3, 'converted_to_position': 3, 'settled': 4, 'cancelled': 0}[p.status] %}
+<div class="steps steps5" aria-label="Step {{ st + 1 }} of 5">{% for label in steps %}<div class="{{ 'd' if loop.index0 < st else ('c' if loop.index0 == st else '') }}">{{ label }}</div>{% endfor %}</div>
+
+<div class="status n3">
+  <div class="stat hero"><span class="k">{{ 'Locked in' if p.planned.outcome_table and p.planned.outcome_table.locked else 'Worst case' }}</span>
+    <span class="v">{{ (p.planned.outcome_table or {}).get('worst_case') or '—' }}</span>
+    <span class="s">{% if p.planned.retention_pct is not none %}{{ p.planned.retention_pct }}% retention · {{ (p.planned.rating.rating or '').replace('_', ' ') }}{% if p.planned.rating.minimum %} (minimum {{ p.planned.rating.minimum }}%){% endif %}{% elif p.planned.qualifying_loss_pct is not none %}qualifying loss {{ p.planned.qualifying_loss_pct }}% of stake{% endif %}</span></div>
+  <div class="stat"><span class="k">Lay</span><span class="v">{{ p.planned.lay_stake }}</span><span class="s">liability {{ p.planned.liability }}</span></div>
+  <div class="stat"><span class="k">Exchange cash after</span><span class="v">{{ p.funding.exchanges[0].available_after_bet if p.funding.exchanges else '—' }}</span>
+    <span class="s">{% if p.funding.shortfall != '0.00' %}<span class="warn-text">shortfall {{ p.funding.shortfall }}</span>{% else %}available now {{ p.funding.exchanges[0].available_now if p.funding.exchanges else '—' }}{% endif %}</span></div>
+</div>
+
+<section class="first">
+  <div class="sh"><h2>The bets</h2></div>
+  <div class="tw"><table class="table">
+    <thead><tr><th>Bet</th><th>Covers</th><th class="num">Stake</th><th class="num">Odds</th><th>Status</th><th class="num">Matched / placed</th></tr></thead>
+    <tbody>{% for l in p.legs %}<tr>
+      <td><b>{{ 'Back' if l.side == 'back' else 'Lay' }}</b> {{ l.account }}{% if l.label %} · {{ l.label }}{% endif %}</td>
+      <td class="small">{{ l.covers|join(', ') }}</td>
+      <td class="num">{{ l.stake or '—' }}{% if l.stake_calculated_by_server %} <span class="m3 small">calc</span>{% endif %}</td><td class="num">{{ l.odds }}</td>
+      <td>{{ l.status.replace('_', ' ') }}</td>
+      <td class="num small">{% if l.side == 'back' %}{% if l.placed %}{{ l.placed.stake }} @ {{ l.placed.odds }}{% if l.placed.reference %} · {{ l.placed.reference }}{% endif %}{% else %}—{% endif %}{% else %}{{ l.matched }}{% if l.fills|length %} @ {{ l.weighted_odds }}{% endif %}{% if l.unmatched != '0.00' %} · <span class="warn-text">{{ l.unmatched }} unmatched</span>{% endif %}{% endif %}</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+
+<section>
+  <div class="sh"><h2>Outcomes</h2><span class="aside small">server calculation</span></div>
+  {{ outcome_table(p.planned.outcome_table, 'As planned') }}
+  {% if p.placed_so_far and p.placed_so_far.outcome_table %}{{ outcome_table(p.placed_so_far.outcome_table, 'As placed and matched so far') }}
+    {% if not p.placed_so_far.fully_hedged %}<p class="warn-text small">Not fully hedged{% for u in p.placed_so_far.unmatched %} · {{ u.remaining }} unmatched at {{ u.odds }} (liability {{ u.liability_if_matched }} more if matched){% endfor %}</p>{% endif %}{% endif %}
+</section>
+
+{% if p.validation %}
+<section>
+  <div class="sh"><h2>Checks</h2><span class="aside">{{ pill(p.validation.status.replace('_', ' '), 'ok' if p.validation.status == 'SAFE_TO_PLACE' else ('bad' if p.validation.status == 'DO_NOT_PLACE' else 'warn')) }}</span></div>
+  <ul class="checks">{% for c in p.validation.checks %}<li class="{{ 'ok' if c.ok else ('bad' if (c.check ~ ': ' ~ c.detail) in p.validation.blockers or c.check in p.validation.blockers else 'warn') }}">{{ c.check }}{% if not c.ok and c.detail %}<br><span class="small muted">{{ c.detail }}</span>{% endif %}</li>{% endfor %}</ul>
+  <p class="small m2">Checked {{ local(p.validation.checked_at) }} (plan version {{ p.validation.plan_version }}).</p>
+</section>
+{% endif %}
+
+{% if p.status not in ('cancelled', 'settled') %}
+<section class="panel">
+  <h2>Next step</h2>
+  {% if p.status in ('draft', 'validated', 'ready_to_place') %}
+  <div class="row-actions">
+    <form method="post" action="{{ u('/ops/validate_bet_plan') }}">{{ csrf_field() }}<input type="hidden" name="plan_id" value="{{ p.id }}"><input type="hidden" name="next" value="/plans/{{ p.id }}"><button class="btn k">Validate</button></form>
+    <a class="btn" href="{{ u('/ops/cancel_bet_plan') }}?plan_id={{ p.id }}&next=/plans/{{ p.id }}">Cancel plan…</a>
+  </div>
+  <details><summary class="small">Prices moved</summary>
+    <form method="post" action="{{ u('/ops/recalculate_bet_plan') }}" class="cols3">{{ csrf_field() }}
+      <input type="hidden" name="plan_id" value="{{ p.id }}"><input type="hidden" name="next" value="/plans/{{ p.id }}">
+      <label>Back odds <input name="back_odds" inputmode="decimal" placeholder="{{ p.legs[0].odds }}"></label>
+      {% if p.legs|selectattr('side', 'equalto', 'lay')|list|length == 1 %}<label>Lay odds <input name="lay_odds" inputmode="decimal" placeholder="{{ (p.legs|selectattr('side', 'equalto', 'lay')|first).odds }}"></label>{% endif %}
+      <button class="btn small">Recalculate</button></form></details>
+  {% endif %}
+  {% set back = p.legs|selectattr('side', 'equalto', 'back')|first %}
+  {% if back and back.status != 'placed' and p.status != 'converted_to_position' %}
+  <details {{ 'open' if p.status == 'ready_to_place' }}><summary class="small">I placed the bookmaker bet</summary>
+    <form method="post" action="{{ u('/ops/record_bookmaker_placement') }}" class="cols3">{{ csrf_field() }}
+      <input type="hidden" name="plan_id" value="{{ p.id }}"><input type="hidden" name="next" value="/plans/{{ p.id }}">
+      <label>Stake £ <input name="stake" inputmode="decimal" value="{{ back.stake }}"></label>
+      <label>Odds <input name="odds" inputmode="decimal" value="{{ back.odds }}"></label>
+      <label>Bet reference <input name="reference"></label>
+      <button class="btn small">Record placement</button></form></details>
+  {% endif %}
+  {% for l in p.legs if l.side == 'lay' and l.status not in ('fully_matched', 'cancelled') and p.status != 'converted_to_position' %}
+  <details {{ 'open' if p.status in ('bookmaker_placed', 'exchange_partially_matched') }}><summary class="small">Lay {{ l.account }}{% if l.label %} ({{ l.label }}){% endif %}: record what matched</summary>
+    <form method="post" action="{{ u('/ops/record_exchange_fill') }}" class="cols3">{{ csrf_field() }}
+      <input type="hidden" name="plan_id" value="{{ p.id }}"><input type="hidden" name="plan_leg_id" value="{{ l.plan_leg_id }}"><input type="hidden" name="next" value="/plans/{{ p.id }}">
+      <label>Matched £ <input name="stake" inputmode="decimal" placeholder="{{ l.unmatched if l.unmatched != '0.00' else l.stake }}"></label>
+      <label>At odds <input name="odds" inputmode="decimal" value="{{ l.odds }}"></label>
+      <button class="btn small">Record fill</button></form>
+    <div class="row-actions">
+      <form method="post" action="{{ u('/ops/mark_exchange_fully_matched') }}">{{ csrf_field() }}<input type="hidden" name="plan_id" value="{{ p.id }}"><input type="hidden" name="plan_leg_id" value="{{ l.plan_leg_id }}"><input type="hidden" name="confirmed_fully_matched" value="true"><input type="hidden" name="next" value="/plans/{{ p.id }}"><button class="btn small" data-confirm="The exchange shows this lay FULLY MATCHED at the planned stake and odds?">Fully matched as planned</button></form>
+      {% if l.unmatched != '0.00' and l.order %}<form method="post" action="{{ u('/ops/cancel_exchange_order') }}">{{ csrf_field() }}<input type="hidden" name="plan_id" value="{{ p.id }}"><input type="hidden" name="plan_leg_id" value="{{ l.plan_leg_id }}"><input type="hidden" name="next" value="/plans/{{ p.id }}"><button class="btn small">Cancelled the unmatched part</button></form>{% endif %}
+    </div></details>
+  {% endfor %}
+</section>
+{% endif %}
+
+<section>
+  <div class="sh"><h2>Funding</h2></div>
+  {% for e in p.funding.exchanges %}<p class="small">{{ e.exchange }}: available {{ e.available_now }} (total {{ e.total_funds }} − matched liability {{ e.matched_liability_held }}{% if e.unmatched_order_reserve != '0.00' %} − unmatched orders {{ e.unmatched_order_reserve }}{% endif %}) · this plan needs {{ e.new_liability_required }} · after: <b>{{ e.available_after_bet }}</b>{% if e.shortfall != '0.00' %} · <span class="warn-text">shortfall {{ e.shortfall }}</span>{% endif %}</p>{% endfor %}
+  {% for x in p.funding.linked_transfers %}<p class="small">Linked: #{{ x.id }} {{ x.amount }} {{ x.from }} → {{ x.to }} ({{ x.type.replace('_', ' ') }})</p>{% endfor %}
+  {% for r in p.funding.can_return %}<p class="small gain">{{ r.amount }} can go back to {{ r.bank }}: the liability it covered has been released.</p>{% endfor %}
+</section>
+
+{% if p.price_revisions|length > 1 %}
+<section>
+  <div class="sh"><h2>Price history</h2></div>
+  <div class="tw"><table class="table"><thead><tr><th>#</th><th>When</th><th>Why</th><th class="num">Lay</th><th class="num">Liability</th><th class="num">Worst</th><th class="num">Retention</th></tr></thead>
+  <tbody>{% for r in p.price_revisions %}<tr><td>{{ r.revision }}</td><td class="small">{{ nice_time(r.at) }}</td><td class="small">{{ r.reason }}</td><td class="num">{{ r.figures.lay_stake }}</td><td class="num">{{ r.figures.liability }}</td><td class="num">{{ r.figures.worst }}</td><td class="num">{{ r.figures.retention_pct if r.figures.retention_pct is not none else r.figures.qualifying_loss_pct }}</td></tr>{% endfor %}</tbody></table></div>
+</section>
+{% endif %}
+
+<section><div class="sh"><h2>Evidence</h2></div>{{ evidence_list(p.evidence, 'plan', p.id, '/plans/' ~ p.id) }}</section>
+<details class="panel"><summary>History</summary>{{ history_list(history_of('plan', p.id)) }}</details>
+{% endblock %}

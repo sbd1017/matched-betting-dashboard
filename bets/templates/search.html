@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Search · Matched betting{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Search</h1></div>
+<form method="get" action="{{ u('/search') }}" class="searchbar first" role="search">
+  <input type="search" name="q" value="{{ q }}" placeholder="Event, team, offer, bookmaker, bet reference, note…" aria-label="Search" autofocus data-search-input>
+  <button class="btn k">Search</button>
+</form>
+{% if q %}
+<p class="note">{{ total }} result{{ '' if total == 1 else 's' }} for “{{ q }}”{% if total >= limit %} (showing the first {{ limit }} of each kind){% endif %}.</p>
+{% for group in groups if group['items'] %}
+<section class="{{ 'first' if loop.first else '' }}">
+  <div class="grp">{{ group.label }}<span class="cnt">{{ group['items']|length }}</span></div>
+  {% for r in group['items'] %}
+  <a class="row nokind" href="{{ u(r.href) }}">
+    <div><h3>{{ r.title }}</h3><p>{{ r.text }}</p></div>
+    <div class="ac">{% if r.amount is not none %}<div class="worth"><b class="{{ 'gain' if r.amount > 0 else ('loss' if r.amount < 0 else '') }}">{{ fmt(r.amount, signed=r.signed) }}</b><small>{{ r.small }}</small></div>{% endif %}</div>
+  </a>
+  {% endfor %}
+</section>
+{% endfor %}
+{% if not total %}<div class="empty"><b>Nothing found</b>Try part of a team name, a bookmaker or an offer title.</div>{% endif %}
+{% else %}
+<p class="note">Searches positions (event, selection, market, notes and bet references), offers, accounts, free bets and ledger descriptions. Press <kbd>⌘K</kbd> or <kbd>/</kbd> on any page to come here.</p>
+{% endif %}
+{% endblock %}
