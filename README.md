@@ -59,6 +59,12 @@ The `init-login` line prints a random password for the user `admin`. Then go to
 http://127.0.0.1:8760/bets/ and sign in. The database is created in `./var` the first time it starts.
 `BETS_SECURE_COOKIES=0` is only there because you're on plain http locally.
 
+## Getting an AI to help
+
+If you'd rather not set it up yourself, or you want ChatGPT to do the record keeping, there are copy and paste
+prompts in [docs/AI_PROMPTS.md](docs/AI_PROMPTS.md). One gets an AI to install it for you, and the other is your
+first message once ChatGPT is connected.
+
 ## Tests
 
 ```bash
