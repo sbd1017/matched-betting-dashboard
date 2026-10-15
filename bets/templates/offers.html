@@ -48,12 +48,12 @@
 <details class="panel" id="add" {{ 'open' if not rows }}><summary>Add an offer</summary>
   <form method="post" action="{{ u('/offers') }}" class="cols2">
     {{ csrf_field() }}
-    <label class="span2">Title <input name="title" placeholder="Bet £10 Get £30 in Free Bets" required></label>
+    <label class="span2">Title <input name="title" placeholder="Bet {{ cur() }}10 Get {{ cur() }}30 in Free Bets" required></label>
     <label>Bookmaker <select name="account_id"><option value="">—</option>{% for a in bookmakers %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}</select></label>
     <label>Type <select name="offer_type">{% for k, label in OFFER_TYPE_LABELS.items() %}<option value="{{ k }}">{{ label }}</option>{% endfor %}</select></label>
-    <label>Qualifying requirement <input name="requirement" placeholder="£10 at min odds 2.0"></label>
-    <label>Reward <input name="reward" placeholder="3 × £10 SNR free bets"></label>
-    <label>Reward value £ <input name="reward_value" inputmode="decimal" placeholder="worked out from the terms"></label>
+    <label>Qualifying requirement <input name="requirement" placeholder="{{ cur() }}10 at min odds 2.0"></label>
+    <label>Reward <input name="reward" placeholder="3 × {{ cur() }}10 SNR free bets"></label>
+    <label>Reward value {{ cur() }} <input name="reward_value" inputmode="decimal" placeholder="worked out from the terms"></label>
     {{ offer_terms_fields() }}
     <label>Starts <input type="datetime-local" name="starts_at"></label>
     <label>Expires <input type="datetime-local" name="expires_at"></label>

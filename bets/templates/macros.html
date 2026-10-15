@@ -50,11 +50,11 @@
 
 {# The optional structured offer terms; `o` is the offer being edited, or none for a new one. #}
 {% macro offer_terms_fields(o=none) -%}
-<label>Qualifying stake £ <input name="qualifying_stake" inputmode="decimal" value="{{ plain(o.qualifying_stake_pence) if o and o.qualifying_stake_pence else '' }}" placeholder="10"></label>
+<label>Qualifying stake {{ cur() }} <input name="qualifying_stake" inputmode="decimal" value="{{ plain(o.qualifying_stake_pence) if o and o.qualifying_stake_pence else '' }}" placeholder="10"></label>
 <label>Minimum odds <input name="min_odds" inputmode="decimal" value="{{ o.min_odds if o and o.min_odds else '' }}" placeholder="2.0"></label>
 <label>Reward type <select name="reward_kind"><option value="">—</option>{% for k, label in (('snr', 'SNR free bets'), ('sr', 'SR free bets'), ('cash', 'Cash')) %}<option value="{{ k }}" {{ 'selected' if o and o.reward_kind == k }}>{{ label }}</option>{% endfor %}</select></label>
 <label>How many free bets <input name="reward_count" inputmode="numeric" value="{{ o.reward_count if o and o.reward_count else '' }}" placeholder="3"></label>
-<label>Each worth £ <small class="muted">or the cash amount</small><input name="reward_each" inputmode="decimal" value="{{ plain(o.reward_each_pence) if o and o.reward_each_pence else '' }}" placeholder="10"></label>
+<label>Each worth {{ cur() }} <small class="muted">or the cash amount</small><input name="reward_each" inputmode="decimal" value="{{ plain(o.reward_each_pence) if o and o.reward_each_pence else '' }}" placeholder="10"></label>
 <label>Free bets expire after (days) <input name="reward_expiry_days" inputmode="numeric" value="{{ o.reward_expiry_days if o and o.reward_expiry_days else '' }}" placeholder="7"></label>
 <label>Reward due when <select name="reward_trigger">{% for k, label in (('', 'the qualifier settles (default)'), ('bet_placed', 'the qualifying bet is placed'), ('bet_fully_matched', 'the qualifier is placed and hedged'), ('bet_lost', 'the qualifier loses'), ('other', 'the bookmaker confirms it')) %}<option value="{{ k }}" {{ 'selected' if o and (o.reward_trigger or '') == k }}>{{ label }}</option>{% endfor %}</select></label>
 {%- endmacro %}

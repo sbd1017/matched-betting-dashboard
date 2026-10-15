@@ -22,7 +22,7 @@ from .tools import READ, _error, _result, _who
 
 log = logging.getLogger("bets_mcp")
 SCHEMES: dict = {}
-Money = Annotated[str, Field(max_length=20, description="GBP, e.g. \"10\" or \"8.09\"")]
+Money = Annotated[str, Field(max_length=20, description="Amount, e.g. \"10\" or \"8.09\"")]
 OddsT = Annotated[str, Field(max_length=12, description="Decimal or fractional odds as shown, e.g. \"6.8\"")]
 Outcome = Annotated[str, Field(min_length=1, max_length=60)]
 

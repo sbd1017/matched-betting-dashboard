@@ -48,7 +48,7 @@
 <details class="panel" id="add" open><summary>Add a free bet</summary>
   <form method="post" action="{{ u('/free-bets') }}" class="cols3">{{ csrf_field() }}
     <label>Bookmaker <select name="account_id" required>{% for a in bookmakers %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}</select></label>
-    <label>Value £ <small class="muted">each</small><input name="face_value" inputmode="decimal" required></label>
+    <label>Value {{ cur() }} <small class="muted">each</small><input name="face_value" inputmode="decimal" required></label>
     <label>How many <input name="count" inputmode="numeric" value="1"></label>
     <label>Type <select name="kind"><option value="snr">SNR (stake not returned)</option><option value="sr">SR (stake returned)</option></select></label>
     <label>Expires <input type="datetime-local" name="expires_at"></label>

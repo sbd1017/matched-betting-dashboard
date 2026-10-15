@@ -135,7 +135,7 @@ class Quota:
 
 # ---------------------------------------------------------------- what the assistant may send
 
-MONEY = "GBP amount as a string with at most 2 decimals, e.g. \"43.27\""
+MONEY = "Amount in the dashboard's currency as a string with at most 2 decimals, e.g. \"43.27\""
 WHEN = "Date/time: \"YYYY-MM-DDTHH:MM\" in UK local time, or ISO 8601 with Z/offset. Date only = end of that day."
 ACCOUNT_REF = "Account name exactly as added in the app (case-insensitive), e.g. \"Betfred\""
 
@@ -365,8 +365,13 @@ def unknown_fields(kind: str, data: dict) -> list[str]:
     return out
 
 
+def _currency() -> str:
+    from .money import currency
+    return currency()
+
+
 def schema_doc(base_url: str) -> dict:
-    return {"api": "Matched betting — Assistant Intake", "version": 1, "base_url": base_url,
+    return {"api": "Matched betting — Assistant Intake", "version": 1, "currency": _currency(), "base_url": base_url,
             "authentication": "Authorization: Bearer <assistant token>",
             "endpoints": {"GET /schema": "this description",
                           "GET /openapi.json": "OpenAPI 3.1 description (for ChatGPT Actions)",

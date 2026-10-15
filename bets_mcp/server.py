@@ -31,7 +31,7 @@ INSTRUCTIONS = (
     "(the user's Trusted Assistant mode) it has been recorded. Never place bets or say you did. "
     "Never invent names, amounts, odds, dates or events: ask for missing details, one or two at a time. The server "
     "does all arithmetic. Transfers of the user's own money are never profit.\n\n"
-    "Workflow: use get_intake_schema if unsure what an entry needs. Money is GBP and times are UK local unless the "
+    "Workflow: use get_intake_schema if unsure what an entry needs. Money is in the dashboard's currency (get_dashboard_totals says which) and times are UK local unless the "
     "user says otherwise. New account: submit_account_candidate (ask bookmaker/exchange/bank and current balance). "
     "Balance of an existing account: submit_balance_candidate (a reconciliation the user confirms). Money moved: "
     "submit_transfer_candidate (ask temporary funding or permanent bankroll). Bets placed: "

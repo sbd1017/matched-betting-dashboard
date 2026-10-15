@@ -30,6 +30,7 @@ from . import brief, evidence, ops, plans, readapi
 from .auth import COOKIE, LoginLimiter, SessionCodec, load_credentials, load_secret, verify_password
 from .config import Settings, load_settings
 from .db import Database
+from . import money
 from .money import (commission_text, fmt, odds_text, parse_commission, parse_odds, plain, to_pence)
 from .services import UserError
 
@@ -56,11 +57,16 @@ KIND_LABELS = {"qualifying": "Qualifying bet", "free_bet_snr": "Free bet (SNR)",
                "other": "Other"}
 
 
+CURRENCY_SETTING = "currency"
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or load_settings()
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     db = Database(settings.db_path)
     db.migrate()
+    with db.read() as _conn:
+        money.set_currency(services.get_setting(_conn, CURRENCY_SETTING, None))
     codec = SessionCodec(load_secret(settings.secret_file), settings.session_hours * 3600)
     limiter = LoginLimiter(settings.login_max_failures, settings.login_window_seconds)
     BASE = settings.base_path
@@ -82,6 +88,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings, app.state.db = settings, db
     templates = Jinja2Templates(directory=str(HERE / "templates"))
     env = templates.env
+    env.globals.update(cur=money.symbol, currency_code=money.currency)
     env.globals.update(fmt=fmt, plain=plain, local=times.local, relative=times.relative, to_input=times.to_local_input,
                        commission_text=commission_text, commission_promo=comm.promo, pct=pct,
                        promo_date_input=comm.date_input, CATEGORY_LABELS=CATEGORY_LABELS, CAPITAL_LABELS=CAPITAL_LABELS,
@@ -2170,7 +2177,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 data = READERS[resource](conn, q)
             except (ValueError, KeyError) as exc:
                 return JSONResponse({"error": "not_found", "message": str(exc)[:300]}, status_code=404)
-        return {"resource": resource, "data": data, "money": "GBP", "times": "UK local"}
+        return {"resource": resource, "data": data, "money": money.currency(), "times": "UK local"}
 
     @router.post("/api/assistant/hedge")
     async def assistant_hedge(request: Request):
@@ -2267,7 +2274,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "username": (load_credentials(settings.auth_file) or {}).get("username"),
                 "assistant": assistant.status(settings.assistant_file),
                 "trusted": imports.auto_confirm_settings(conn), "KINDS": imports.TRUSTABLE,
-                "KIND_TITLES": imports.KIND_TITLES, "perms": ops.permissions(conn), "policy": plans.policy(conn)})
+                "KIND_TITLES": imports.KIND_TITLES, "perms": ops.permissions(conn), "policy": plans.policy(conn),
+                "currencies": money.CURRENCIES, "currency": money.currency()})
+
+    @router.post("/settings/currency")
+    async def currency_save(request: Request):
+        def fn(conn, f):
+            code = (f.get("currency") or "").upper()
+            if code not in money.CURRENCIES:
+                raise UserError("Choose one of the listed currencies")
+            before = services.get_setting(conn, CURRENCY_SETTING, money.DEFAULT_CURRENCY)
+            if code != before:
+                services.set_setting(conn, CURRENCY_SETTING, code)
+                services.audit(conn, "setting", None, "currency", {"currency": before}, {"currency": code},
+                               "display currency")
+            money.set_currency(code)
+        return await write(request, fn, "Currency saved", "/settings#currency")
 
     @router.post("/settings/retention-policy")
     async def retention_policy_save(request: Request):

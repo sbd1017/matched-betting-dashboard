@@ -188,7 +188,7 @@
 
   <details><summary>{{ 'Change' if w.plan.put_away_pct or w.plan.min_bankroll_pence else 'Set' }} your winnings plan</summary>
     <form method="post" action="{{ u('/profit/plan') }}" class="cols3">{{ csrf_field() }}
-      <label>Minimum working bankroll £ <input name="min_bankroll" inputmode="decimal" value="{{ plain(w.plan.min_bankroll_pence) }}"></label>
+      <label>Minimum working bankroll {{ cur() }} <input name="min_bankroll" inputmode="decimal" value="{{ plain(w.plan.min_bankroll_pence) }}"></label>
       <label>Put away % of each completed month’s profit <input name="put_away_pct" inputmode="numeric" value="{{ w.plan.put_away_pct }}"></label>
       <button class="btn">Save plan</button>
     </form>

@@ -1,6 +1,6 @@
 """Read views for the operating workflow: bet plans, outcome tables, expected rewards, evidence, Next Actions and the
 Operating Brief (one call that tells the assistant -- or the Operations page -- everything needed to decide what to
-do next). Read-only. Money is a GBP string, times UK local, like bets/readapi.py.
+do next). Read-only. Money is a string in the dashboard's currency, times UK local, like bets/readapi.py.
 """
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from decimal import Decimal
 
 from . import (calc, evidence, exposure, issues, metrics, outcomes, outlook, plans, readapi, rewards, services,
                times)
-from .money import fmt, plain
+from .money import fmt, plain, symbol
 from .readapi import m, t
 
 PRIORITY = {"urgent": 0, "high": 1, "medium": 2, "low": 3}
@@ -306,9 +306,9 @@ def next_actions(conn, s=None) -> list[dict]:
                 lay = (val.get("exchange") or [{}])[0]
                 out.append(_action("high" if p["event_at"] and p["event_at"] <= h24 else "medium", "place",
                                    f"Place plan #{p['id']}: {p['event']}{starts}",
-                                   (f"Back £{bk.get('stake')} @ {bk.get('odds')} at {bk.get('account')}; lay "
-                                    f"£{lay.get('lay_stake')} @ {lay.get('lay_odds')} at {lay.get('account')} "
-                                    f"(liability £{lay.get('liability')})") if bk else "Validated and ready.",
+                                   (f"Back {symbol()}{bk.get('stake')} @ {bk.get('odds')} at {bk.get('account')}; lay "
+                                    f"{symbol()}{lay.get('lay_stake')} @ {lay.get('lay_odds')} at {lay.get('account')} "
+                                    f"(liability {symbol()}{lay.get('liability')})") if bk else "Validated and ready.",
                                    "Place both bets, then send the confirmations", deadline=p["event_at"], records=rec,
                                    user=True))
         elif p["status"] == "bookmaker_placed":

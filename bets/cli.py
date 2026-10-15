@@ -199,9 +199,21 @@ def assistant_token(settings, action: str, target: str | None) -> None:
                                                          else "") + ".\n")
 
 
+def _load_currency(settings) -> None:
+    """Admin output (digest, alerts) uses the dashboard's display currency."""
+    if settings.db_path.exists():
+        from . import money
+        try:
+            with Database(settings.db_path).read() as conn:
+                money.set_currency(services.get_setting(conn, "currency", None))
+        except Exception:                                   # noqa: BLE001 - display only; never block a command
+            pass
+
+
 def main(argv=None) -> None:
     argv = list(sys.argv[1:] if argv is None else argv)
     settings = load_settings()
+    _load_currency(settings)
     if not argv:
         sys.exit(__doc__)
     cmd, args = argv[0], argv[1:]

@@ -549,7 +549,7 @@ def op_record_unhedged_qualifier(conn, p: dict) -> Plan:
     odds = plans._odds(p.get("odds"), "odds")
     reason = _str(p, "reason", 300) or _reason(p)
     if not reason:
-        raise UserError("reason: why it was deliberately not laid (e.g. 'stake only £0.05; max loss 5p')")
+        raise UserError("reason: why it was deliberately not laid (e.g. 'the stake is tiny, so the most I can lose is 5p')")
     advice = hedge_advice(conn, stake)
     plan = Plan("record_unhedged_qualifier", "safe_edit",
                 f"Qualifier for offer #{offer['id']} ({offer['title']}): {acc['name']} {fmt(stake)} @ {odds} on "

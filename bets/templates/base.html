@@ -65,7 +65,7 @@
     </div>
     <input type="hidden" data-calc-kind value="qualifying">
     <div class="fields">
-      <div class="fld b"><label for="dc-stake">Back stake £</label><input id="dc-stake" name="stake" inputmode="decimal" data-calc-stake></div>
+      <div class="fld b"><label for="dc-stake">Back stake {{ cur() }}</label><input id="dc-stake" name="stake" inputmode="decimal" data-calc-stake></div>
       <div class="fld b"><label for="dc-back">Back odds</label><input id="dc-back" name="back_odds" inputmode="decimal" data-calc-back></div>
       {% set dflt = calc_ex['items']|selectattr('id', 'equalto', calc_ex['default'])|first if calc_ex['items'] else none %}
       {% if calc_ex['items'] %}<div class="fld l text wide"><label for="dc-ex">Exchange</label><select id="dc-ex" name="exchange" data-exchange>

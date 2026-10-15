@@ -30,7 +30,7 @@
     {% if a.kind == 'exchange' %}<fieldset class="span-all"><legend class="small">Which figure did you read?</legend>
       <label class="check"><input type="radio" name="basis" value="available" checked> Available balance <span class="m2 small">(app expects {{ fmt(expected.available) }})</span></label>
       <label class="check"><input type="radio" name="basis" value="total"> Total incl. liability <span class="m2 small">(app expects {{ fmt(expected.total) }})</span></label></fieldset>{% endif %}
-    <label>Balance shown £ <input name="actual" inputmode="decimal" required placeholder="{{ plain(expected.available if a.kind == 'exchange' else a.balance) }}"></label>
+    <label>Balance shown {{ cur() }} <input name="actual" inputmode="decimal" required placeholder="{{ plain(expected.available if a.kind == 'exchange' else a.balance) }}"></label>
     <label>Note <input name="note" placeholder="what you think caused any difference"></label>
     <input type="hidden" name="adjust_shown" value="1">
     <label class="check span-all"><input type="checkbox" name="adjust" value="1"> If it differs, record the difference as a profit/loss adjustment <span class="m2 small">(otherwise it is kept as unresolved, nothing posted, and listed under Issues)</span></label>

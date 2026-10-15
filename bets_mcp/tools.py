@@ -36,7 +36,7 @@ HELD_NOTE = "Trusted Assistant mode is on but held this for the user's review: "
 
 # ---------------------------------------------------------------- shared argument types
 
-Money = Annotated[str, Field(max_length=20, description="GBP amount as the user said it, e.g. \"43.27\" "
+Money = Annotated[str, Field(max_length=20, description="Amount as the user said it, e.g. \"43.27\" "
                                                        "(at most 2 decimals). Never invent or round it.")]
 Odds = Annotated[str, Field(max_length=12, description="Odds as the user said them: decimal \"4.2\" or fractional \"16/5\"")]
 When = Annotated[str, Field(max_length=25, description="UK local time \"YYYY-MM-DDTHH:MM\" (BST/GMT is applied), or a "
@@ -118,7 +118,7 @@ HINTS = {"unknown_account": "Ask the user whether to add this account (submit_ac
                             "entries that use it can be submitted too and are confirmed after it.",
          "account_exists": "This account already exists: for its current balance use submit_balance_candidate.",
          "missing_field": "Ask the user for the missing detail; do not guess it.",
-         "invalid_amount": "Ask the user to restate the amount (GBP, at most 2 decimals).",
+         "invalid_amount": "Ask the user to restate the amount (at most 2 decimals).",
          "invalid_odds": "Ask the user to restate the odds.",
          "invalid_funding_type": "Ask the user whether this was temporary funding or a permanent bankroll movement.",
          "duplicate_conflict": "This request_id was already used for something else: use a new request_id.",
@@ -279,7 +279,7 @@ def register(server, upstream: Upstream, limits: Limits, settings) -> dict:
                 tools[t.name] = {"required": t.input_schema.get("required", []),
                                  "fields": {k: {x: v[x] for x in ("type", "enum", "description") if x in v}
                                             for k, v in props.items()}}
-        return _result({"rules": data.get("rules", []), "money": "GBP", "times": "UK local time",
+        return _result({"rules": data.get("rules", []), "money": data.get("currency", "GBP"), "times": "UK local time",
                         "tools": tools, "server_types": data.get("types", {})})
 
     @server.tool(name="calculate_match", title="Lay stake calculator (no records)", annotations=READ, meta=_meta("calculate_match"))
@@ -346,7 +346,7 @@ def register(server, upstream: Upstream, limits: Limits, settings) -> dict:
                                     Field(description="Ask the user if not said. bank = where money comes from "
                                                       "(e.g. Lloyds)")],
             balance: Annotated[str, Field(max_length=20, description="Money in the account now, as the user said it "
-                                                                     "(GBP). It is their capital, not profit. Not "
+                                                                     "(in the dashboard's currency). It is their capital, not profit. Not "
                                                                      "for banks.")] = "",
             commission: Annotated[str, Field(max_length=6, description="Exchanges only: commission %")] = "",
             notes: Notes = "", dry_run: DryRun = False, request_id: RequestId = "") -> CallToolResult:
@@ -361,7 +361,7 @@ def register(server, upstream: Upstream, limits: Limits, settings) -> dict:
     async def submit_balance_candidate(
             account: AccountName,
             balance: Annotated[str, Field(max_length=20, description="The balance the bookmaker/exchange shows now, "
-                                                                     "as the user said it (GBP)")],
+                                                                     "as the user said it (in the dashboard's currency)")],
             observed_at: When = "", note: Notes = "", dry_run: DryRun = False,
             request_id: RequestId = "") -> CallToolResult:
         """Use this when the user tells you the current balance of an account that ALREADY exists. It becomes a
@@ -478,12 +478,12 @@ def register(server, upstream: Upstream, limits: Limits, settings) -> dict:
                                           "recurring", "other"], Field(description="Kind of offer")] = "other",
             requirement: Annotated[str, Field(max_length=300, description="What must be done")] = "",
             reward: Annotated[str, Field(max_length=300, description="What is given, e.g. \"3 x £10 free bets\"")] = "",
-            reward_value: Annotated[str, Field(max_length=20, description="Face value of the reward (GBP); worked out "
+            reward_value: Annotated[str, Field(max_length=20, description="Face value of the reward (in the dashboard's currency); worked out "
                                                                           "from reward_count x reward_each if given")] = "",
-            qualifying_stake: Annotated[str, Field(max_length=20, description="Stake the qualifying bet needs (GBP)")] = "",
+            qualifying_stake: Annotated[str, Field(max_length=20, description="Stake the qualifying bet needs (in the dashboard's currency)")] = "",
             min_odds: Annotated[str, Field(max_length=12, description="Minimum back odds to qualify, e.g. \"2.0\"")] = "",
             reward_count: Annotated[int | None, Field(ge=1, le=20, description="How many free bets (1 for cash)")] = None,
-            reward_each: Annotated[str, Field(max_length=20, description="Value of each free bet, or the cash (GBP)")] = "",
+            reward_each: Annotated[str, Field(max_length=20, description="Value of each free bet, or the cash (in the dashboard's currency)")] = "",
             reward_type: Annotated[Literal["snr", "sr", "cash"] | None, Field(description="Free bets SNR / SR, or cash")] = None,
             reward_expiry_days: Annotated[int | None, Field(ge=1, le=365, description="Free bets expire this many days "
                                                                                        "after they arrive")] = None,
@@ -550,7 +550,7 @@ def register(server, upstream: Upstream, limits: Limits, settings) -> dict:
             back_result: Annotated[Literal["won", "lost", "void", "cashout", "manual"] | None, Field(
                 description="Instead of outcome, only for exceptions (dead heat, cash-out): the back bet's result")] = None,
             back_amount: Annotated[str, Field(max_length=20, description="Only with back_result cashout/manual: what "
-                                                                         "the bookmaker paid (GBP)")] = "",
+                                                                         "the bookmaker paid (in the dashboard's currency)")] = "",
             lay_result: Annotated[Literal["won", "lost", "void", "cashout", "manual"] | None, Field(
                 description="Instead of outcome, only for exceptions: the lay's result (won = the selection "
                             "lost)")] = None,
@@ -586,7 +586,7 @@ def register(server, upstream: Upstream, limits: Limits, settings) -> dict:
             expires_at: Annotated[str, Field(max_length=25, description="When the free bets expire, if the offer's terms "
                                                                         "don't say (ask the user)")] = "",
             count: Annotated[int | None, Field(ge=1, le=20, description="Only if different from the offer's terms")] = None,
-            each: Annotated[str, Field(max_length=20, description="Only if different: value of each (GBP)")] = "",
+            each: Annotated[str, Field(max_length=20, description="Only if different: value of each (in the dashboard's currency)")] = "",
             reward_type: Annotated[Literal["snr", "sr", "cash"] | None, Field(description="Only if different")] = None,
             notes: Notes = "", dry_run: DryRun = False, request_id: RequestId = "") -> CallToolResult:
         """Use this when the user says the reward for an offer has arrived ("my Coral free bets came through"). The
@@ -598,7 +598,7 @@ def register(server, upstream: Upstream, limits: Limits, settings) -> dict:
     @server.tool(name="submit_arrival_candidate", title="Record that a withdrawal reached the bank", annotations=SUBMIT,
                  meta=_meta("submit_arrival_candidate"))
     async def submit_arrival_candidate(
-            amount: Annotated[str, Field(max_length=20, description="Amount of the withdrawal (GBP)")] = "",
+            amount: Annotated[str, Field(max_length=20, description="Amount of the withdrawal (in the dashboard's currency)")] = "",
             from_account: Annotated[str, Field(max_length=60, description="Betting account it came from")] = "",
             to_account: Annotated[str, Field(max_length=60, description="The bank")] = "",
             transfer_number: Annotated[int | None, Field(ge=1, description="Transfer number, if the user gives it")] = None,
@@ -642,7 +642,7 @@ def register(server, upstream: Upstream, limits: Limits, settings) -> dict:
             event: str = "", selection: str = "", market: str = "",
             event_time: Annotated[str, Field(max_length=25, description="Position: new start time")] = "",
             offer: Annotated[str, Field(max_length=160, description="Position / free bet: the offer it belongs to")] = "",
-            stake: Annotated[str, Field(max_length=20, description="Leg: new stake (GBP)")] = "",
+            stake: Annotated[str, Field(max_length=20, description="Leg: new stake (in the dashboard's currency)")] = "",
             odds: Annotated[str, Field(max_length=12, description="Leg: new odds")] = "",
             commission: Annotated[str, Field(max_length=6, description="Leg (lay): new commission %")] = "",
             placed_at: Annotated[str, Field(max_length=25, description="Leg: when it was placed")] = "",

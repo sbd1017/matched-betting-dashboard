@@ -323,3 +323,24 @@ def test_first_login_can_be_created_before_the_data_directory_exists(tmp_path):
     write_credentials(target, "admin", "a long enough password")
     assert load_credentials(target)["username"] == "admin"
     assert (target.parent.stat().st_mode & 0o777) == 0o700
+
+
+def test_currency_setting_changes_display_not_amounts(app, browser):
+    from bets import money, services
+    with app.state.db.tx() as conn:
+        aid = services.create_account(conn, name="Betfred", kind="bookmaker", opening_balance=1234)
+    assert "£12.34" in browser.get("/bets/accounts").text
+    assert 'id="currency"' in browser.get("/bets/settings").text
+    r = browser.post("/bets/settings/currency", {"currency": "EUR"})
+    assert r.status_code == 303 and "ok=" in r.headers["location"]
+    page = browser.get("/bets/accounts").text
+    assert "€12.34" in page and "£12.34" not in page
+    with app.state.db.read() as conn:
+        assert services.balance(conn, aid) == 1234                       # nothing converted
+        assert services.get_setting(conn, "currency") == "EUR"
+    assert money.to_pence("€5.50") == 550 and money.to_pence("£5.50") == 550
+    bad = browser.post("/bets/settings/currency", {"currency": "JPY"})
+    assert "err=" in bad.headers["location"]
+    browser.post("/bets/settings/currency", {"currency": "GBP"})
+    assert "£12.34" in browser.get("/bets/accounts").text
+    money.set_currency("GBP")

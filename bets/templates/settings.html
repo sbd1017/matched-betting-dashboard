@@ -10,7 +10,7 @@
     <label>Name <input name="name" required></label>
     <label>Type <select name="kind"><option value="bookmaker">Bookmaker</option><option value="exchange">Exchange</option><option value="bank">Bank / funding source</option></select></label>
     <label>Commission % (exchanges) <input name="commission" inputmode="decimal"></label>
-    <label>Money already there £ <input name="opening_balance" inputmode="decimal" placeholder="0"></label>
+    <label>Money already there {{ cur() }} <input name="opening_balance" inputmode="decimal" placeholder="0"></label>
     <button class="btn">Add</button>
   </form>
   <p class="small muted">"Money already there" is your existing bankroll (capital), not profit.</p>
@@ -63,7 +63,7 @@
     {% for kind, label in (('snr', 'SNR'), ('sr', 'SR')) %}{% for k in ('excellent', 'very_good', 'acceptable', 'reject_below') %}
     <label>{{ label }} {{ k.replace('_', ' ') }} % <input name="{{ kind }}_{{ k }}" inputmode="decimal" value="{{ policy[kind][k]|int if policy[kind][k] == policy[kind][k]|int else policy[kind][k] }}"></label>{% endfor %}{% endfor %}
     {% for k in ('excellent_loss_pct', 'good_loss_pct', 'max_loss_pct') %}<label>Qualifier {{ k.replace('_pct', '').replace('_', ' ') }} % <input name="qualifying_{{ k }}" inputmode="decimal" value="{{ policy.qualifying[k]|int if policy.qualifying[k] == policy.qualifying[k]|int else policy.qualifying[k] }}"></label>{% endfor %}
-    <label>Leave a qualifier unlaid up to £ <input name="qualifying_unhedged_max_loss" inputmode="decimal" value="{{ '%.2f'|format(policy.qualifying.unhedged_max_loss) }}"></label>
+    <label>Leave a qualifier unlaid up to {{ cur() }} <input name="qualifying_unhedged_max_loss" inputmode="decimal" value="{{ '%.2f'|format(policy.qualifying.unhedged_max_loss) }}"></label>
     <button class="btn">Save policy</button>
   </form>
 </section>
@@ -76,6 +76,15 @@
     <label class="check"><input type="checkbox" name="enabled"{{ ' checked' if trusted.enabled }}> Confirm Matched Betting Assistant entries automatically</label>
     <p class="small muted">Only for these types:</p>
     {% for k in KINDS %}<label class="check"><input type="checkbox" name="kinds" value="{{ k }}"{{ ' checked' if k in trusted.kinds }}> {{ KIND_TITLES[k] }}</label>{% endfor %}
+    <p class="row-actions"><button class="btn">Save</button></p>
+  </form>
+</section>
+
+<section class="panel" id="currency">
+  <h2>Currency</h2>
+  <p class="small muted">How amounts are shown and typed. Nothing is converted: amounts you have already recorded keep their numbers.</p>
+  <form method="post" action="{{ u('/settings/currency') }}" class="cols3">{{ csrf_field() }}
+    <label>Currency <select name="currency">{% for code, c in currencies.items() %}<option value="{{ code }}"{{ ' selected' if code == currency }}>{{ c[0] }} {{ c[1] }} ({{ code }})</option>{% endfor %}</select></label>
     <p class="row-actions"><button class="btn">Save</button></p>
   </form>
 </section>

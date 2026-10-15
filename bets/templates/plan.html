@@ -4,7 +4,7 @@
 {% block content %}
 <p class="crumbs"><a href="{{ u('/plans') }}">Bet plans</a>{% if p.offer %} · <a href="{{ u('/offers/' ~ p.offer.id) }}">{{ p.offer.title }}</a>{% endif %}{% if p.position_id %} · <a href="{{ u('/positions/' ~ p.position_id) }}">Position #{{ p.position_id }}</a>{% endif %}</p>
 <div class="page-head"><h1>{{ p.event }}</h1><span class="aside">{{ pill(p.status_title, 'ok' if p.status in ('fully_matched', 'settled', 'converted_to_position', 'ready_to_place') else ('warn' if p.status in ('bookmaker_placed', 'exchange_partially_matched', 'validated') else '')) }}</span></div>
-<p class="note">{{ p.selection or '—' }}{% if p.market %} · {{ p.market }}{% endif %} · {{ KIND_LABELS[p.type] }}{% if p.event_at %} · {{ nice_time(p.event_at) }}{% endif %}{% if p.free_bet %} · free bet #{{ p.free_bet.id }} £{{ p.free_bet.value }} {{ p.free_bet.type|upper }} ({{ p.free_bet.status }}{% if p.free_bet.expires_at %}, expires {{ nice_time(p.free_bet.expires_at) }}{% endif %}){% endif %}</p>
+<p class="note">{{ p.selection or '—' }}{% if p.market %} · {{ p.market }}{% endif %} · {{ KIND_LABELS[p.type] }}{% if p.event_at %} · {{ nice_time(p.event_at) }}{% endif %}{% if p.free_bet %} · free bet #{{ p.free_bet.id }} {{ cur() }}{{ p.free_bet.value }} {{ p.free_bet.type|upper }} ({{ p.free_bet.status }}{% if p.free_bet.expires_at %}, expires {{ nice_time(p.free_bet.expires_at) }}{% endif %}){% endif %}</p>
 {% set steps = ['Plan', 'Validated', 'Bookmaker placed', 'Lay matched', 'Settled'] %}
 {% set st = {'draft': 0, 'validated': 1, 'ready_to_place': 1, 'bookmaker_placed': 2, 'exchange_partially_matched': 2, 'fully_matched': 3, 'converted_to_position': 3, 'settled': 4, 'cancelled': 0}[p.status] %}
 <div class="steps steps5" aria-label="Step {{ st + 1 }} of 5">{% for label in steps %}<div class="{{ 'd' if loop.index0 < st else ('c' if loop.index0 == st else '') }}">{{ label }}</div>{% endfor %}</div>
@@ -66,7 +66,7 @@
   <details {{ 'open' if p.status == 'ready_to_place' }}><summary class="small">I placed the bookmaker bet</summary>
     <form method="post" action="{{ u('/ops/record_bookmaker_placement') }}" class="cols3">{{ csrf_field() }}
       <input type="hidden" name="plan_id" value="{{ p.id }}"><input type="hidden" name="next" value="/plans/{{ p.id }}">
-      <label>Stake £ <input name="stake" inputmode="decimal" value="{{ back.stake }}"></label>
+      <label>Stake {{ cur() }} <input name="stake" inputmode="decimal" value="{{ back.stake }}"></label>
       <label>Odds <input name="odds" inputmode="decimal" value="{{ back.odds }}"></label>
       <label>Bet reference <input name="reference"></label>
       <button class="btn small">Record placement</button></form></details>
@@ -75,7 +75,7 @@
   <details {{ 'open' if p.status in ('bookmaker_placed', 'exchange_partially_matched') }}><summary class="small">Lay {{ l.account }}{% if l.label %} ({{ l.label }}){% endif %}: record what matched</summary>
     <form method="post" action="{{ u('/ops/record_exchange_fill') }}" class="cols3">{{ csrf_field() }}
       <input type="hidden" name="plan_id" value="{{ p.id }}"><input type="hidden" name="plan_leg_id" value="{{ l.plan_leg_id }}"><input type="hidden" name="next" value="/plans/{{ p.id }}">
-      <label>Matched £ <input name="stake" inputmode="decimal" placeholder="{{ l.unmatched if l.unmatched != '0.00' else l.stake }}"></label>
+      <label>Matched {{ cur() }} <input name="stake" inputmode="decimal" placeholder="{{ l.unmatched if l.unmatched != '0.00' else l.stake }}"></label>
       <label>At odds <input name="odds" inputmode="decimal" value="{{ l.odds }}"></label>
       <button class="btn small">Record fill</button></form>
     <div class="row-actions">

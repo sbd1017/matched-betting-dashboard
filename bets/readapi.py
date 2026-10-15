@@ -1,6 +1,6 @@
 """Read-only views of the records, as plain JSON for the assistant (and the before/after of every change).
 
-Money is a GBP string ("12.34", "-3.20"); times are UK local "YYYY-MM-DD HH:MM". Every balance says exactly
+Money is a string in the dashboard's currency ("12.34", "-3.20"); times are UK local "YYYY-MM-DD HH:MM". Every balance says exactly
 what it is, so nothing has to be inferred from one ambiguous "balance":
 
   exchange   total_funds = available_cash + reserved_lay_liability (what the ledger holds for the account)
@@ -359,12 +359,17 @@ def ledger_entries(conn, *, account: str | None = None, position_id: int | None 
     return out
 
 
+def money_currency() -> str:
+    from .money import currency
+    return currency()
+
+
 def dashboard_totals(conn) -> dict:
     s = metrics.summary(conn)
     stc = outlook.still_to_come(conn)
     found = issues.collect(conn, s)
     ex_total = s.exchange_balance
-    return {
+    return {"currency": money_currency(), 
         "realised_profit": {"all_time": m(s.profit_lifetime), "this_month": m(s.profit_month), "this_week": m(s.profit_week),
                             "meaning": "settled bets and explicit P&L entries only; never deposits, withdrawals, "
                                        "temporary funding, free-bet face value or open liability"},

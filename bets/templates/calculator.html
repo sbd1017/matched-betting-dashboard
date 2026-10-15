@@ -5,7 +5,7 @@
 <h1 class="page-title">Calculator</h1>
 <form method="get" class="panel cols2" data-calc>
   <label>Type <select name="kind" data-calc-kind>{% for k in ('qualifying', 'free_bet_snr', 'free_bet_sr') %}<option value="{{ k }}" {{ 'selected' if p.kind == k }}>{{ KIND_LABELS[k] }}</option>{% endfor %}</select></label>
-  <label>Back stake / free bet £ <input name="stake" inputmode="decimal" value="{{ p.stake or '' }}" data-calc-stake></label>
+  <label>Back stake / free bet {{ cur() }} <input name="stake" inputmode="decimal" value="{{ p.stake or '' }}" data-calc-stake></label>
   <label>Back odds <input name="back_odds" inputmode="decimal" value="{{ p.back_odds or '' }}" data-calc-back></label>
   <label>Lay odds <input name="lay_odds" inputmode="decimal" value="{{ p.lay_odds or '' }}" data-calc-lay></label>
   {% if calc_ex['items'] %}<label>Exchange <select name="exchange" data-exchange>

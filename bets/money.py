@@ -10,8 +10,34 @@ import re
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 PENNY = Decimal("0.01")
-MAX_PENCE = 100_000_000_00          # £100m: anything larger is a typo
-_MONEY = re.compile(r"^(-)?\s*£?\s*(-)?\s*([0-9][0-9,]*)(?:\.([0-9]{1,2}))?$")
+MAX_PENCE = 100_000_000_00          # 100m: anything larger is a typo
+
+# Amounts are stored as integer minor units (pence / cents), so any currency with two decimal places works. The
+# currency only changes how money is shown and which symbols are accepted when typing it (Settings -> Currency).
+CURRENCIES = {"GBP": ("£", "Pound sterling"), "EUR": ("€", "Euro"), "USD": ("$", "US dollar"),
+              "AUD": ("A$", "Australian dollar"), "CAD": ("C$", "Canadian dollar"), "NZD": ("NZ$", "New Zealand dollar")}
+DEFAULT_CURRENCY = "GBP"
+_currency = DEFAULT_CURRENCY
+
+
+def set_currency(code: str | None) -> str:
+    """Use this currency for display from now on (unknown codes fall back to the default)."""
+    global _currency
+    _currency = code if code in CURRENCIES else DEFAULT_CURRENCY
+    return _currency
+
+
+def currency() -> str:
+    return _currency
+
+
+def symbol() -> str:
+    return CURRENCIES[_currency][0]
+
+
+_SYMBOLS = "|".join(sorted((re.escape(x) for code, (sym, _) in CURRENCIES.items() for x in (sym, code)),
+                           key=len, reverse=True))
+_MONEY = re.compile(r"^(-)?\s*(?:" + _SYMBOLS + r")?\s*(-)?\s*([0-9][0-9,]*)(?:\.([0-9]{1,2}))?$", re.I)
 
 
 def to_pence(value, *, allow_negative: bool = False, allow_zero: bool = True) -> int:
@@ -29,7 +55,7 @@ def to_pence(value, *, allow_negative: bool = False, allow_zero: bool = True) ->
         text = str(value).strip().replace("−", "-")
         m = _MONEY.match(text)
         if not m:
-            if re.match(r"^-?\s*£?\s*-?[0-9][0-9,]*\.[0-9]{3,}$", text):
+            if re.match(r"^-?\s*(?:" + _SYMBOLS + r")?\s*-?[0-9][0-9,]*\.[0-9]{3,}$", text, re.I):
                 raise ValueError("Use at most two decimal places")
             raise ValueError("Enter an amount like 10 or 10.50")
         neg = bool(m.group(1) or m.group(2))
@@ -57,12 +83,12 @@ def round_pence(amount_pounds: Decimal) -> int:
 
 
 def fmt(pence: int | None, *, signed: bool = False) -> str:
-    """1234 -> '£12.34'; -320 -> '−£3.20'; signed=True adds '+' for gains."""
+    """1234 -> '£12.34'; -320 -> '−£3.20'; signed=True adds '+' for gains. The symbol is the chosen currency's."""
     if pence is None:
         return "—"
     sign = "−" if pence < 0 else ("+" if signed and pence > 0 else "")
     p = abs(int(pence))
-    return f"{sign}£{p // 100:,}.{p % 100:02d}"
+    return f"{sign}{symbol()}{p // 100:,}.{p % 100:02d}"
 
 
 def plain(pence: int | None) -> str:

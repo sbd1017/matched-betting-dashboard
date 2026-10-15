@@ -32,7 +32,7 @@
         {% for a in bookmakers %}<option value="{{ a.id }}" {{ 'selected' if v.back_account|string == a.id|string }}>{{ a.name }}</option>{% endfor %}
       </select></label>
     <div class="cols2">
-      <label>Stake £ <input name="back_stake" inputmode="decimal" value="{{ v.back_stake or '' }}" data-calc-stake></label>
+      <label>Stake {{ cur() }} <input name="back_stake" inputmode="decimal" value="{{ v.back_stake or '' }}" data-calc-stake></label>
       <label>Odds <input name="back_odds" inputmode="decimal" value="{{ v.back_odds or '' }}" data-calc-back></label>
     </div>
   </fieldset>
@@ -46,7 +46,7 @@
     <div class="cols3">
       <label>Odds <input name="lay_odds" inputmode="decimal" value="{{ v.lay_odds or '' }}" data-calc-lay></label>
       <label>Commission % <input name="commission" inputmode="decimal" value="{{ v.commission or '' }}" data-calc-commission></label>
-      <label>Lay stake £ <input name="lay_stake" inputmode="decimal" value="{{ v.lay_stake or '' }}" placeholder="auto" data-calc-laystake></label>
+      <label>Lay stake {{ cur() }} <input name="lay_stake" inputmode="decimal" value="{{ v.lay_stake or '' }}" placeholder="auto" data-calc-laystake></label>
     </div>
     <p class="small warn-text" data-commission-warning hidden></p>
   </fieldset>

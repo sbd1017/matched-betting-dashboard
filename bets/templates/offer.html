@@ -46,7 +46,7 @@
     <label>Type <select name="offer_type">{% for k, label in OFFER_TYPE_LABELS.items() %}<option value="{{ k }}" {{ 'selected' if o.offer_type == k }}>{{ label }}</option>{% endfor %}</select></label>
     <label>Requirement <input name="requirement" value="{{ o.requirement }}"></label>
     <label>Reward <input name="reward" value="{{ o.reward }}"></label>
-    <label>Reward value £ <input name="reward_value" inputmode="decimal" value="{{ plain(o.reward_value_pence) }}"></label>
+    <label>Reward value {{ cur() }} <input name="reward_value" inputmode="decimal" value="{{ plain(o.reward_value_pence) }}"></label>
     {{ offer_terms_fields(o) }}
     <label>Starts <input type="datetime-local" name="starts_at" value="{{ to_input(o.starts_at) }}"></label>
     <label>Expires <input type="datetime-local" name="expires_at" value="{{ to_input(o.expires_at) }}"></label>

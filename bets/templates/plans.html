@@ -23,7 +23,7 @@
     <label>Starts <input type="datetime-local" name="event_time"></label>
     <label>Type <select name="kind">{% for k in ('qualifying', 'free_bet_snr', 'free_bet_sr') %}<option value="{{ k }}">{{ KIND_LABELS[k] }}</option>{% endfor %}</select></label>
     <label>Bookmaker <select name="bookmaker">{% for a in bookmakers %}<option>{{ a.name }}</option>{% endfor %}</select></label>
-    <label>Back stake £ <input name="back_stake" inputmode="decimal" placeholder="free bet: its value"></label>
+    <label>Back stake {{ cur() }} <input name="back_stake" inputmode="decimal" placeholder="free bet: its value"></label>
     <label>Back odds <input name="back_odds" inputmode="decimal" required></label>
     <label>Exchange <select name="exchange">{% for a in exchanges %}<option>{{ a.name }}</option>{% endfor %}</select></label>
     <label>Lay odds <input name="lay_odds" inputmode="decimal" required></label>

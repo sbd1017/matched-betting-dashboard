@@ -65,7 +65,7 @@ def _key(request_id: str) -> str:
 class LegResult(BaseModel):
     leg_id: Annotated[int, Field(ge=1, description="The bet's id (legs[].id in get_position)")]
     result: Literal["won", "lost", "void", "cashout", "manual"]
-    amount: Annotated[str | None, Field(max_length=20, description="cashout / manual only: GBP actually credited (+) "
+    amount: Annotated[str | None, Field(max_length=20, description="cashout / manual only: amount actually credited (+) "
                                                                    "or debited (-)")] = None
 
 
@@ -463,7 +463,7 @@ def register(server, upstream, limits, settings) -> dict:
 
     @tool("record_balance", "Record a balance the user read off an account", EDIT)
     async def record_balance(account: Annotated[str, Field(min_length=1, max_length=60)],
-                             observed: Annotated[str, Field(max_length=20, description="GBP figure exactly as shown")],
+                             observed: Annotated[str, Field(max_length=20, description="Figure exactly as shown")],
                              request_id: ChangeId,
                              figure: Literal["available", "total"] | None = None,
                              observed_at: WhenUK = "", note: Annotated[str, Field(max_length=300)] = "",

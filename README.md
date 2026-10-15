@@ -22,6 +22,7 @@ or exchange and it never moves money.
 - An Operations page that lists what needs doing next, and an Issues page that spots records that don't
   add up and suggests a fix.
 - Profit page, calendar, search, CSV, JSON and calendar exports, dark mode, and it works fine on a phone.
+- Works in pounds by default, but you can switch to euros, dollars and a few others in Settings.
 - Optional ChatGPT connection through an MCP server with OAuth. ChatGPT can read your records and log bets
   from your screenshots, but anything risky waits for you to confirm it.
 - Optional Telegram summary each morning.

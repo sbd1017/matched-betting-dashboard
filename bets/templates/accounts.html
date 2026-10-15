@@ -92,7 +92,7 @@
   <form method="post" action="{{ u('/transfers') }}" class="cols3">{{ csrf_field() }}
     <label>From <select name="from_id" required>{% for a in all_accounts %}<option value="{{ a.id }}" {{ 'selected' if pre.from == a.id }}>{{ a.name }} ({{ a.kind }})</option>{% endfor %}</select></label>
     <label>To <select name="to_id" required>{% for a in all_accounts %}<option value="{{ a.id }}" {{ 'selected' if pre.to == a.id }}>{{ a.name }} ({{ a.kind }})</option>{% endfor %}</select></label>
-    <label>Amount £ <input name="amount" inputmode="decimal" value="{{ pre.amount }}" required></label>
+    <label>Amount {{ cur() }} <input name="amount" inputmode="decimal" value="{{ pre.amount }}" required></label>
     <label>Type <select name="capital_type">
       <option value="">Automatic</option>
       {% for k, label in CAPITAL_LABELS.items() %}<option value="{{ k }}" {{ 'selected' if pre.type == k }}>{{ label }}</option>{% endfor %}</select></label>
@@ -112,7 +112,7 @@
     <label>Name <input name="name" required placeholder="Betfred"></label>
     <label>Type <select name="kind"><option value="bookmaker">Bookmaker</option><option value="exchange">Exchange</option><option value="bank">Bank / funding source</option></select></label>
     <label>Commission % (exchanges) <input name="commission" inputmode="decimal" placeholder="2"></label>
-    <label>Money already there £ <input name="opening_balance" inputmode="decimal" placeholder="0"></label>
+    <label>Money already there {{ cur() }} <input name="opening_balance" inputmode="decimal" placeholder="0"></label>
     <label class="span2">Notes <input name="notes"></label>
     <button class="btn">Add account</button>
   </form>
