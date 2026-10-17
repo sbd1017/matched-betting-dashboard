@@ -83,7 +83,8 @@ CHANGE_TOOLS.update({
     "acknowledge_issue": {"issue_key": "x:1", "reason": "test"}, "reopen_issue": {"issue_key": "x:1"},
     "mark_alerts_notified": {"alert_keys": ["settle:position #1"]},
     "record_unhedged_qualifier": {"offer_id": 1, "event": "A v B", "stake": "0.05", "odds": "2.8", "reason": "tiny stake"},
-    "set_hedge_strategy": {"position_id": 1, "hedge_strategy": "pending"}})
+    "set_hedge_strategy": {"position_id": 1, "hedge_strategy": "pending"},
+    "record_funding_repayment": {"from_account": "First Direct", "funding_source": "Lloyds", "amount": "1"}})
 PROTECTED_CALLS.update(READ_TOOLS)
 PROTECTED_CALLS.update({k: {**v, "request_id": "probe-1"} for k, v in CHANGE_TOOLS.items()})
 EXPECTED_TOOLS |= set(READ_TOOLS) | set(CHANGE_TOOLS)
@@ -155,7 +156,7 @@ def test_server_version_tracks_the_plugin_and_the_tool_manifest(mcp):
 
 def test_tool_manifest_is_exactly_the_expected_96(mcp):
     names = [t.name for t in list_tools(mcp, None)]
-    assert len(names) == len(set(names)) == 96 == len(EXPECTED_TOOLS)
+    assert len(names) == len(set(names)) == 97 == len(EXPECTED_TOOLS)
     assert {"record_unhedged_qualifier", "set_hedge_strategy"} <= set(names)
 
 

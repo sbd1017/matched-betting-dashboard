@@ -852,7 +852,7 @@ def numbers(conn) -> dict:
                                           "count(*) > 1)").fetchone()[0],
             "temp_raw": conn.execute(
                 "SELECT coalesce(sum(CASE WHEN capital_type = 'temporary_funding' THEN amount_pence END), 0) - "
-                "coalesce(sum(CASE WHEN capital_type = 'temporary_return' THEN temp_portion_pence END), 0) FROM transfers "
+                f"coalesce(sum(CASE WHEN {services.REPAID_SQL} THEN temp_portion_pence END), 0) FROM transfers "
                 "WHERE voided_at IS NULL").fetchone()[0]}
 
 
@@ -914,7 +914,9 @@ def run(conn, name: str, params: dict, *, actor: str = "user", request_id: str |
         return {**_describe(plan), "status": "blocked", "reason": plan.blocked}
     if plan.noop:
         return {**_describe(plan), "status": "already_done"}
-    return execute(conn, plan, actor=actor, request_id=request_id)
+    result = execute(conn, plan, actor=actor, request_id=request_id)
+    reconcile_waiting(conn)
+    return result
 
 
 # ---------------------------------------------------------------- assistant requests (idempotent, permission-aware)
@@ -988,6 +990,7 @@ def assistant_request(conn, name: str, params: dict, *, token_id: str, request_i
                      "note": "Someone changed this record meanwhile: read it again, then retry with a new request_id"}
     except UserError as exc:
         return 400, {"status": "rejected", "errors": [str(exc)]}
+    reconcile_waiting(conn)
     ref = _store(conn, key=key, name=name, params=params, plan=plan, status="applied", result=result,
                  submitted_by=f"assistant:{token_id}")
     return 200, {**result, "change_id": ref["change_id"]}
@@ -1012,6 +1015,36 @@ def held(conn) -> list[dict]:
         d["result"] = json.loads(r["result_json"]) if r["result_json"] else {}
         out.append(d)
     return out
+
+
+def reconcile_held(conn) -> list[str]:
+    """A held change that would now do nothing (its effect is already in the records, e.g. the same reversal was
+    confirmed from Imports) stops waiting: status already_done, decided_by 'system'. Re-checked with the change's own
+    plan, so it is never applied twice; a change that now errors or is blocked stays held for the user."""
+    done = []
+    for r in conn.execute("SELECT * FROM assistant_ops WHERE status = 'held' ORDER BY id").fetchall():
+        try:
+            plan = plan_for(conn, r["op"], json.loads(r["params_json"]))
+        except (UserError, ValueError, KeyError, TypeError):
+            continue
+        if not plan.noop or plan.blocked:
+            continue
+        body = {**_describe(plan), "status": "already_done",
+                "note": "Nothing to do: the records were already in this state, so it no longer needs you."}
+        cur = conn.execute("UPDATE assistant_ops SET status = 'already_done', result_json = ?, decided_at = ?, "
+                           "decided_by = 'system' WHERE id = ? AND status = 'held'",
+                           (json.dumps(body), times.now_iso(), r["id"]))
+        if cur.rowcount:
+            services.audit(conn, "change", None, "already_done", None, {"change": r["op"], "change_id": r["public_id"]},
+                           plan.summary)
+            done.append(r["public_id"])
+    return done
+
+
+def reconcile_waiting(conn) -> dict:
+    """Both queues of things waiting for the user (Imports candidates and held changes) drop what is already done."""
+    from . import imports
+    return {"imports": imports.reconcile_pending(conn), "changes": reconcile_held(conn)}
 
 
 def decide(conn, public_id: str, confirm: bool) -> dict:
@@ -1039,6 +1072,7 @@ def decide(conn, public_id: str, confirm: bool) -> dict:
     result = execute(conn, plan, actor="assistant+user", request_id=request_id)
     conn.execute("UPDATE assistant_ops SET status = 'applied', result_json = ?, decided_at = ?, decided_by = 'user' "
                  "WHERE id = ?", (json.dumps(result), now, r["id"]))
+    reconcile_waiting(conn)
     return result
 
 

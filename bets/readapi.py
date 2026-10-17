@@ -20,6 +20,7 @@ CAPITAL_MEANING = {
     "bankroll_withdrawal": "permanent bankroll money taken out (capital, never profit)",
     "temporary_funding": "borrowed money paid in that has to go back to the bank (capital; tracked as temporary "
                          "funding outstanding)",
+    "funding_repayment": "temporary funding paid back to the bank that lent it, bank to bank (e.g. from the matched-betting hub bank to the lender); capital, never profit or loss; no betting balance moves",
     "temporary_return": "temporary funding paid back to the bank (capital; reduces temporary funding outstanding; any "
                         "excess over what was outstanding counts as a bankroll withdrawal)",
     "profit_withdrawal": "winnings taken out of the bankroll (capital movement; realised profit is unchanged)",
@@ -68,7 +69,8 @@ def balances(conn, a: dict) -> dict:
                 "meaning": "cash_balance is what the bookmaker should show as withdrawable cash; stakes on open bets "
                            "have already left it. Free bets are not cash."}
     return {"net_sent_to_betting": m(-total), "temporary_funding_outstanding": m(services.outstanding_temporary(conn, a["id"])),
-            "meaning": "a bank is a funding source, not bankroll."}
+            "meaning": "a bank is a funding source, not bankroll. temporary_funding_outstanding is what this bank lent "
+                       "that has not been repaid to it yet."}
 
 
 def account(conn, a: dict | int) -> dict:
@@ -226,6 +228,14 @@ def transfer(conn, tid: int) -> dict:
     if x["capital_type"] == "temporary_return":
         out.update(repays_temporary_funding=m(x["temp_portion_pence"]),
                    excess_counted_as_bankroll_withdrawal=m(x["amount_pence"] - x["temp_portion_pence"]))
+    if x["capital_type"] == "funding_repayment":
+        led = services.funding_ledger(conn, x["to_account_id"])
+        rep = led["repayments"].get(x["id"]) or {"allocations": [], "outstanding_after": None}
+        out.update(lender=out["to"], paid_from=out["from"], repays_temporary_funding=m(x["temp_portion_pence"]),
+                   repaid_funding=[{"transfer_id": a["funding_transfer_id"], "amount": m(a["amount"])}
+                                   for a in rep["allocations"]],
+                   outstanding_to_lender_after=m(rep["outstanding_after"]) if rep["outstanding_after"] is not None else None,
+                   outstanding_to_lender_now=m(led["outstanding"]))
     if x["in_transit"] or x["arrived_at"]:
         out.update(in_transit=bool(x["in_transit"]), arrived_at=t(x["arrived_at"]))
     if x["voided_at"]:
@@ -257,7 +267,7 @@ def temporary_funding(conn) -> list[dict]:
         tin = conn.execute("SELECT coalesce(sum(amount_pence), 0) FROM transfers WHERE voided_at IS NULL AND "
                            "capital_type = 'temporary_funding' AND from_account_id = ?", (b["id"],)).fetchone()[0]
         back = conn.execute("SELECT coalesce(sum(temp_portion_pence), 0) FROM transfers WHERE voided_at IS NULL AND "
-                            "capital_type = 'temporary_return' AND to_account_id = ?", (b["id"],)).fetchone()[0]
+                            f"{services.REPAID_SQL} AND to_account_id = ?", (b["id"],)).fetchone()[0]
         if tin or back:
             out.append({"bank": b["name"], "temporary_in": m(tin), "repaid": m(back),
                         "outstanding": m(services.outstanding_temporary(conn, b["id"]))})

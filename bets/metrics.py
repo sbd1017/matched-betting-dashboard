@@ -7,7 +7,8 @@ Identity that must always hold (checked on the dashboard):
 
 where betting balances are bookmaker + exchange accounts only (bank accounts are
 funding sources), own capital = opening balances + bankroll contributions - bankroll
-withdrawals (including any return above the temporary funding it repaid), and
+withdrawals (including any return above the temporary funding it repaid) + bank-to-bank repayments of temporary
+funding (the borrowed money already came out to the hub bank), and
 retained profit = realised profit - profit withdrawals (winnings deliberately taken out;
 a transfer, so it never changes realised profit).
 """
@@ -142,12 +143,18 @@ def summary(conn) -> Summary:
         " coalesce(sum(CASE WHEN capital_type = 'temporary_funding' THEN amount_pence END), 0),"
         " coalesce(sum(CASE WHEN capital_type = 'temporary_return' THEN temp_portion_pence END), 0),"
         " coalesce(sum(CASE WHEN capital_type = 'temporary_return' THEN amount_pence - temp_portion_pence END), 0),"
-        " coalesce(sum(CASE WHEN capital_type = 'profit_withdrawal' THEN amount_pence END), 0)"
+        " coalesce(sum(CASE WHEN capital_type = 'profit_withdrawal' THEN amount_pence END), 0),"
+        " coalesce(sum(CASE WHEN capital_type = 'funding_repayment' THEN temp_portion_pence END), 0)"
         " FROM transfers WHERE voided_at IS NULL").fetchone()
-    contributions, withdrawals, temp_in, temp_back, excess_returned, profit_out = caps
+    contributions, withdrawals, temp_in, temp_back, excess_returned, profit_out, bank_repaid = caps
+    # A bank-to-bank repayment (hub -> lender) moves no betting money: the borrowed money had already come out as a
+    # withdrawal to the hub. So it repays the lender, and that much of what was counted as withdrawn was really the
+    # lender's money going back (own capital rises by the same amount). Never counted as withdrawn twice.
+    temp_back += bank_repaid
+    was_borrowed = min(bank_repaid, withdrawals + excess_returned)
     opening = _one(conn, f"SELECT coalesce(sum(e.amount_pence), 0) FROM ledger_entries e WHERE {ACTIVE} "
                          "AND e.category = 'opening_balance'")
-    own_capital = opening + contributions - withdrawals - excess_returned
+    own_capital = opening + contributions - withdrawals - excess_returned + bank_repaid
     temporary = temp_in - temp_back
     fb = conn.execute("SELECT count(*), coalesce(sum(face_value_pence), 0) FROM free_bets "
                       "WHERE status = 'available' AND deleted_at IS NULL").fetchone()
@@ -163,7 +170,7 @@ def summary(conn) -> Summary:
         temporary_outstanding=temporary,
         adjustments=_one(conn, f"SELECT coalesce(sum(e.amount_pence), 0) FROM ledger_entries e WHERE {ACTIVE} "
                                "AND e.category IN ('adjustment', 'reconciliation')"),
-        bankroll_withdrawn=withdrawals + excess_returned, profit_withdrawn=profit_out,
+        bankroll_withdrawn=withdrawals + excess_returned - was_borrowed, profit_withdrawn=profit_out,
         free_bets_value=fb[1], free_bets_count=fb[0],
     )
     s.checks = consistency_checks(conn, s)

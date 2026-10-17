@@ -277,3 +277,27 @@ out["sky"] = sky
     bad = err(call_tool(mcp, token, "update_offer", {"offer_id": seeded["offer"], "status": "awaiting_reward",
                                                      "request_id": rid("i")}))
     assert "follows its records" in bad["message"]
+
+
+def test_j_funding_repaid_from_the_hub_bank(mcp, bets, token, world):
+    seeded = bets.seed('''
+hub = services.create_account(conn, name="Hub Bank", kind="bank")
+lender = services.create_account(conn, name="Lender Bank", kind="bank")
+sm = conn.execute("SELECT id FROM accounts WHERE name = 'Smarkets'").fetchone()[0]
+services.create_transfer(conn, from_id=lender, to_id=sm, amount=5000, capital_type="temporary_funding")
+services.create_transfer(conn, from_id=sm, to_id=hub, amount=5000, capital_type="bankroll_withdrawal")
+''')
+    p0 = profit(mcp, token)
+    before = {b["bank"]: b for b in call(mcp, token, "get_dashboard_totals")["data"]["temporary_funding_by_bank"]}
+    assert before["Lender Bank"]["outstanding"] == "50.00"
+    r = call(mcp, token, "record_funding_repayment", from_account="Hub Bank", funding_source="Lender Bank", amount="50",
+             request_id="j-repay-1")
+    assert r["status"] == "applied" and r["result"]["outstanding_to_lender_after"] == "0.00", r
+    after = {b["bank"]: b for b in call(mcp, token, "get_dashboard_totals")["data"]["temporary_funding_by_bank"]}
+    assert after["Lender Bank"] == {"bank": "Lender Bank", "temporary_in": "50.00", "repaid": "50.00", "outstanding": "0.00"}
+    assert profit(mcp, token) == pytest.approx(p0)
+    assert call(mcp, token, "record_funding_repayment", from_account="Hub Bank", funding_source="Lender Bank",
+                amount="50", request_id="j-repay-1")["duplicate"]
+    over = call(mcp, token, "record_funding_repayment", from_account="Hub Bank", funding_source="Lender Bank",
+                amount="10", request_id="j-repay-2")
+    assert over["status"] == "blocked" and "nothing to repay" in str(over)

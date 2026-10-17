@@ -460,6 +460,27 @@ def register(server, upstream, limits, settings) -> dict:
             "plan_id": plan_id, "when": when, "return_by": return_by, "notes": notes, "allow_duplicate": allow_duplicate},
             reason, dry_run, request_id)
 
+    @tool("record_funding_repayment", "Temporary funding paid back, bank to bank", EDIT)
+    async def record_funding_repayment(from_account: Annotated[str, Field(min_length=1, max_length=60, description=
+                                                                          "The bank the repayment left: usually the "
+                                                                          "matched-betting hub bank, e.g. First Direct")],
+                                       funding_source: Annotated[str, Field(min_length=1, max_length=60, description=
+                                                                            "The bank that lent the temporary funding "
+                                                                            "and is being paid back, e.g. Lloyds")],
+                                       amount: Money, request_id: ChangeId, when: WhenUK = "",
+                                       notes: Annotated[str, Field(max_length=300)] = "", allow_duplicate: bool = False,
+                                       dry_run: DryRun = False) -> CallToolResult:
+        """Use this when the user has paid temporary funding back from one bank to the bank that lent it, e.g. "I've
+        sent £240 from First Direct back to Lloyds". Betting accounts only deal with the user's hub bank, so the
+        lender is repaid bank to bank. Record the betting withdrawal to the hub as an ordinary transfer (e.g. Smarkets
+        -> First Direct) and this repayment separately. Never record a fake betting -> lender transfer (e.g. Smarkets
+        -> Lloyds) to clear the debt, never treat the hub bank as the lender, and it is never profit or loss. It can't
+        be more than is outstanding to the lender (get_dashboard_totals temporary_funding_by_bank); repeats with the
+        same request_id are safe. To undo one, use reverse_transfer."""
+        return await change("record_funding_repayment", {
+            "from_account": from_account, "funding_source": funding_source, "amount": amount, "when": when,
+            "notes": notes, "allow_duplicate": allow_duplicate}, "", dry_run, request_id)
+
     @tool("add_record_evidence", "Record what a screenshot shows", EDIT)
     async def add_record_evidence(record_type: Literal["plan", "position", "leg", "offer", "free_bet", "transfer",
                                                        "reconciliation", "expected_reward", "account"],

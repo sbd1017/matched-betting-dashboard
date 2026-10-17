@@ -31,7 +31,7 @@ def temporary_dues(conn) -> list[dict]:
     banks = conn.execute("SELECT id, name FROM accounts WHERE kind = 'bank'").fetchall()
     for bank in banks:
         repaid = conn.execute("SELECT coalesce(sum(temp_portion_pence), 0) FROM transfers WHERE voided_at IS NULL "
-                              "AND capital_type = 'temporary_return' AND to_account_id = ?", (bank["id"],)).fetchone()[0]
+                              f"AND {services.REPAID_SQL} AND to_account_id = ?", (bank["id"],)).fetchone()[0]
         for t in conn.execute(
                 "SELECT t.*, a.name AS to_name, a.kind AS to_kind FROM transfers t JOIN accounts a ON a.id = t.to_account_id "
                 "WHERE t.voided_at IS NULL AND t.capital_type = 'temporary_funding' AND t.from_account_id = ? "

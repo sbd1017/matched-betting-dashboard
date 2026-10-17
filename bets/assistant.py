@@ -175,7 +175,9 @@ TYPES = {
                      "Betting → bank: temporary_return, bankroll_withdrawal, or profit_withdrawal ONLY when the user says "
                      "they are taking winnings out (it is never new profit; it always waits for the user's confirmation "
                      "and is refused if larger than the profit still in the bankroll). Between betting accounts: internal. "
-                     "\"temporary\" / \"permanent\" are accepted. Omit only if the user does not know (the app "
+                     "\"temporary\" / \"permanent\" are accepted. Bank to bank is not a transfer here: temporary "
+                     "funding paid back from the hub bank to the bank that lent it is a funding repayment "
+                     "(record_funding_repayment). Omit only if the user does not know (the app "
                      "then assumes temporary and flags it).", False,
                      ("temporary_funding", "bankroll_contribution", "temporary_return", "bankroll_withdrawal",
                       "profit_withdrawal", "internal", "temporary", "permanent")),

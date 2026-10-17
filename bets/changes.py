@@ -256,6 +256,65 @@ def apply_amend(conn, c: dict) -> str:
     return f"account:{tid}"
 
 
+# ---------------------------------------------------------------- already applied?
+
+_TABLES = {"position": "positions", "leg": "legs", "offer": "offers", "free_bet": "free_bets", "transfer": "transfers",
+           "account": "accounts", "entry": "ledger_entries", "settlement": "positions"}
+# The protected change (bets/ops.py) that does the same thing as a reverse candidate, and its record parameter.
+SAME_CHANGE = {"transfer": ("reverse_transfer", "transfer_id"), "position": ("delete_position", "position_id"),
+               "free_bet": ("delete_free_bet", "free_bet_id"), "settlement": ("reopen_position", "position_id")}
+
+
+def already_applied(conn, kind: str, c: dict) -> str | None:
+    """If the records already show what this amend/reverse candidate asks for (because the same correction was made
+    another way, e.g. confirmed as a protected change), say so; otherwise None. A record that is missing, or in any
+    other state, is NOT treated as done: that stays a real problem for the user to look at."""
+    target, tid = c.get("target"), c.get("target_id")
+    table = _TABLES.get(target)
+    if not table or not tid:
+        return None
+    row = services.row(conn, table, int(tid))
+    if not row:
+        return None
+    name = f"{'position' if target == 'settlement' else target.replace('_', ' ')} #{tid}"
+    if kind == "reverse":
+        when = None
+        if target == "transfer":
+            when = row["voided_at"]
+        elif target == "entry":
+            when = row["superseded_at"]
+        elif target in ("leg", "position", "free_bet"):
+            when = row["deleted_at"]
+        elif target == "settlement":
+            legs = conn.execute("SELECT result FROM legs WHERE position_id = ? AND deleted_at IS NULL", (tid,)).fetchall()
+            if row["deleted_at"] or not legs or any(l["result"] != "pending" for l in legs):
+                return None
+            when = row["updated_at"]
+        if not when:
+            return None
+        how = ""
+        same = SAME_CHANGE.get(target)
+        if same:
+            ch = conn.execute("SELECT public_id, decided_by FROM assistant_ops WHERE op = ? AND status = 'applied' AND "
+                              "CAST(json_extract(params_json, '$.' || ?) AS INTEGER) = ? ORDER BY id DESC LIMIT 1",
+                              (same[0], same[1], int(tid))).fetchone()
+            if ch:
+                how = f" by change {ch['public_id']}" + (" (confirmed by you)" if ch["decided_by"] == "user" else "")
+        verb = "reopened" if target == "settlement" else ("reversed" if target in ("transfer", "entry") else "removed")
+        return f"{name} was already {verb} on {times.local(when)}{how}"
+    if kind == "amend":
+        if row.get("deleted_at") or row.get("voided_at"):
+            return None
+        for key, value in (c.get("changes") or {}).items():
+            if key == "move_to":
+                if value == "new" or row.get("position_id") != value:
+                    return None
+            elif row.get(key) != value:
+                return None
+        return f"{name} already has these values" if c.get("changes") else None
+    return None
+
+
 # ---------------------------------------------------------------- reverse
 
 def normalise_reverse(conn, raw: dict, source: str):

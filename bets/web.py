@@ -44,6 +44,7 @@ CATEGORY_LABELS = {
     "free_bet_winnings": "Free bet winnings", "promotion_reward": "Promotion reward", "bonus_cash": "Bonus cash",
     "adjustment": "Adjustment", "reconciliation": "Reconciliation", "other": "Other"}
 CAPITAL_LABELS = {"temporary_funding": "Temporary funding", "temporary_return": "Return of temporary funding",
+                  "funding_repayment": "Temporary funding repaid, bank to bank",
                   "bankroll_contribution": "Bankroll contribution", "bankroll_withdrawal": "Bankroll withdrawal",
                   "profit_withdrawal": "Profit withdrawal (winnings taken out)",
                   "internal": "Between betting accounts"}
@@ -598,6 +599,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         with db.tx() as conn:
             services.expire_overdue(conn)
             offer_state.sync_all(conn)
+            ops.reconcile_waiting(conn)
             issues.sync_dismissals(conn)
         with db.read() as conn:
             s = metrics.summary(conn)
@@ -1402,6 +1404,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @router.post("/transfers")
     async def transfer(request: Request):
         def fn(conn, f):
+            if f.get("capital_type") == "funding_repayment":     # hub bank -> lender: its own validated path
+                tid = services.record_funding_repayment(
+                    conn, from_id=opt_int(f.get("from_id")) or 0, lender_id=opt_int(f.get("to_id")) or 0,
+                    amount=money_or_error(f.get("amount", ""), "Amount", allow_zero=False),
+                    at=times.from_local_input(f.get("at"), happened=True), notes=f.get("notes", ""))
+                return back("/accounts", ok="Repayment recorded", undo_token=f"transfer:{tid}")
             tid = services.create_transfer(conn, from_id=opt_int(f.get("from_id")) or 0, to_id=opt_int(f.get("to_id")) or 0,
                                            amount=money_or_error(f.get("amount", ""), "Amount", allow_zero=False),
                                            at=times.from_local_input(f.get("at")), capital_type=f.get("capital_type") or None,
@@ -1719,6 +1727,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @router.get("/imports")
     def imports_page(request: Request):
+        with db.tx() as conn:
+            ops.reconcile_waiting(conn)                    # nothing already done is shown as waiting
         with db.read() as conn:
             return render(request, "imports.html", {**imports_context(conn), "held_changes": ops.held(conn)})
 
@@ -1742,6 +1752,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 batch["results"] = imports.confirm_many(conn, ids, all_or_nothing=action == "selected")
         except imports.BatchError as exc:
             batch["results"], batch["rolled_back"] = exc.results, True
+        with db.tx() as conn:
+            ops.reconcile_waiting(conn)                    # after the batch, never in the middle of it
         with db.read() as conn:
             return render(request, "imports.html", imports_context(conn, batch))
 
@@ -1870,6 +1882,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if f.get("decision") not in ("accept", "reject"):
                 raise UserError("Choose confirm or reject")
             imports.decide(conn, iid, f.get("decision") == "accept")
+            ops.reconcile_waiting(conn)
             item = services.row(conn, "import_candidates", iid)
             if item["status"] == "rejected":
                 return back("/imports", ok="Import rejected — nothing was saved")

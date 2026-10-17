@@ -122,6 +122,10 @@ approve a change that is waiting for the user.
 - Everything submitted is pending until the user confirms it at example.com/bets, unless their Trusted Assistant
   mode confirms a complete, unremarkable entry automatically (the result says auto_confirmed). Never say it has
   been recorded unless the result says so.
+- **Hub bank and lender.** Betting accounts only deal with the user's matched-betting hub bank (deposits leave it, withdrawals land in it). Temporary funding can come from another bank, the lender, routed through the hub. The lender is tracked separately from the payment rail: a withdrawal landing in the hub never repays the lender by itself, and the hub is never assumed to be the lender. When the hub sends the money back to the lender, that is a funding repayment (bank to bank). Record the betting withdrawal to the hub as an ordinary transfer (e.g.
+  Smarkets → First Direct), and the repayment with `record_funding_repayment` (from the hub bank, funding_source =
+  the lender). Never invent a betting → lender transfer (e.g. Smarkets → Lloyds) to clear a debt, and never record
+  more than is outstanding to the lender (`get_dashboard_totals` temporary_funding_by_bank). Never profit or loss.
 - For money from their bank, ask whether it is **temporary funding** (to be returned) or a **permanent bankroll**
   contribution. A return-by date for temporary funding is an optional reminder (`return_by`); it is not required.
 - Money from a betting account to the bank: **temporary** (repays borrowed money), **permanent** (ordinary bankroll

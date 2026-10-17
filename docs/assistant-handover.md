@@ -104,6 +104,12 @@ cannot approve a change waiting for the user, and never moves money.
 | amend (`submit_amend_candidate`) **new** | says something recorded is wrong | the target, how to find it, only the fields that change, the reason |
 | reverse (`submit_reverse_candidate`) **new** | wants something recorded by mistake undone | the target, how to find it, the reason |
 
+### Hub bank and lender (funding repaid bank to bank)
+
+Betting accounts only deal with the user's matched-betting hub bank (deposits leave it, withdrawals land in it). Temporary funding can come from another bank, the lender, routed through the hub. The lender is tracked separately from the payment rail: a withdrawal landing in the hub never repays the lender by itself, and the hub is never assumed to be the lender. When the hub sends the money back to the lender, that is a funding repayment (bank to bank). Use `record_funding_repayment` (from_account = the hub bank, funding_source = the lender), never a fake
+betting → lender transfer. It can't exceed what is outstanding to the lender, is never profit or loss, auto-applies
+like an ordinary transfer (safe edit), and is undone with `reverse_transfer`.
+
 ### Money out to the bank: three different things
 
 - **Temporary funding return** (`temporary`): money borrowed from the bank going back. Repays the oldest

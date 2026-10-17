@@ -275,6 +275,50 @@ def op_record_funding_transfer(conn, p: dict) -> Plan:
     return plan
 
 
+def op_record_funding_repayment(conn, p: dict) -> Plan:
+    """Temporary funding paid back bank to bank: the hub bank (where betting withdrawals land) returns it to the
+    bank that lent it. A new factual money movement, not a correction."""
+    from .changes import find_account
+    src = find_account(conn, p.get("from_account"))
+    lender = find_account(conn, p.get("funding_source"))
+    amount = plans._pence(p.get("amount"), "amount")
+    if src["id"] == lender["id"]:
+        raise UserError("funding_source: the bank that lent the money, not the bank paying it back")
+    if src["kind"] != "bank" or lender["kind"] != "bank":
+        raise UserError("from_account and funding_source must both be banks; a betting withdrawal is an ordinary transfer "
+                        "(e.g. Smarkets -> First Direct)")
+    owed = services.outstanding_temporary(conn, lender["id"])
+    plan = Plan("record_funding_repayment", "safe_edit",
+                f"{fmt(amount)} {src['name']} → {lender['name']}: repays {lender['name']}'s temporary funding",
+                effects=[f"{lender['name']} temporary funding outstanding {fmt(owed)} → {fmt(max(owed - amount, 0))}",
+                         "capital only: never profit or loss; no bookmaker or exchange balance moves"])
+    if not owed:
+        plan.blocked = f"No temporary funding from {lender['name']} is outstanding, so there is nothing to repay"
+    elif amount > owed:
+        plan.blocked = (f"Only {fmt(owed)} of {lender['name']}'s temporary funding is outstanding. Record {fmt(owed)}: "
+                        "any extra the user sent is not matched-betting money and is not recorded")
+    since = times.iso(times.now() - timedelta(hours=24))
+    dup = conn.execute("SELECT id FROM transfers WHERE voided_at IS NULL AND capital_type = 'funding_repayment' AND "
+                       "from_account_id = ? AND to_account_id = ? AND amount_pence = ? AND created_at >= ?",
+                       (src["id"], lender["id"], amount, since)).fetchone()
+    if dup and not p.get("allow_duplicate"):
+        plan.blocked = (f"Repayment #{dup[0]} of the same amount from {src['name']} to {lender['name']} was recorded in the "
+                        "last 24 hours. If this really is a second repayment, pass allow_duplicate=true")
+
+    def apply(c):
+        tid = services.record_funding_repayment(
+            c, from_id=src["id"], lender_id=lender["id"], amount=amount, at=_when(p, "when"),
+            notes=_str(p, "notes", 500) or f"Repays {lender['name']} temporary matched-betting funding via {src['name']}")
+        plan.created.append(("transfer", tid))
+        led = services.funding_ledger(c, lender["id"])
+        return {"transfer_id": tid, "lender": lender["name"], "paid_from": src["name"],
+                "repaid_funding": [{"transfer_id": a["funding_transfer_id"], "amount": plain(a["amount"])}
+                                   for a in led["repayments"][tid]["allocations"]],
+                "outstanding_to_lender_after": plain(led["outstanding"])}
+    plan.apply = apply
+    return plan
+
+
 # ---------------------------------------------------------------- evidence (planning: never moves money)
 
 def op_add_record_evidence(conn, p: dict) -> Plan:
@@ -651,6 +695,7 @@ NEW = {
     "set_position_outcomes": op_set_position_outcomes, "dismiss_issue": op_dismiss_issue, "reopen_issue": op_reopen_issue,
     "mark_alerts_notified": op_mark_alerts_notified,
     "record_unhedged_qualifier": op_record_unhedged_qualifier, "set_hedge_strategy": op_set_hedge_strategy,
+    "record_funding_repayment": op_record_funding_repayment,
 }
 OPS.update(NEW)
 TITLES.update({k: k.replace("_", " ").capitalize() for k in NEW})

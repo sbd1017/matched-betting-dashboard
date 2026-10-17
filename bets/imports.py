@@ -1145,6 +1145,33 @@ def decide(conn, import_id: int, accept: bool, decided_by: str = "user") -> int 
     return None
 
 
+def reconcile_pending(conn) -> list[int]:
+    """A pending correction (amend / reverse) whose effect is already in the records leaves the queue: status
+    applied, decided_by 'system', with the reason in hold_reason and an audit row. Typical case: the assistant asked
+    for the same reversal twice (here and as a protected change) and the user confirmed the other one. Idempotent:
+    only rows still waiting are touched, and nothing else (no record, balance or ledger) is changed."""
+    from . import changes
+    done = []
+    for item in conn.execute("SELECT * FROM import_candidates WHERE status = 'needs_confirmation' AND kind IN "
+                             "('amend', 'reverse') ORDER BY id").fetchall():
+        try:
+            c = json.loads(item["candidate_json"])
+            why = changes.already_applied(conn, item["kind"], c)
+        except (ValueError, KeyError, TypeError):
+            continue
+        if not why:
+            continue
+        ref = f"{c['target']}:{c['target_id']}"
+        cur = conn.execute("UPDATE import_candidates SET status = 'applied', decided_at = ?, decided_by = 'system', "
+                           "applied_ref = ?, hold_reason = ? WHERE id = ? AND status = 'needs_confirmation'",
+                           (times.now_iso(), ref, f"already applied: {why}"[:300], item["id"]))
+        if cur.rowcount:
+            services.audit(conn, "import", item["id"], "already_applied", None, {"applied_ref": ref, "decided_by": "system"},
+                           why)
+            done.append(item["id"])
+    return done
+
+
 def _same_thing(kind: str, c: dict):
     """What makes two candidates the same real-world entry (None: never matched automatically)."""
     from . import normalise

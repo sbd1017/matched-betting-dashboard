@@ -52,6 +52,10 @@ yourself; it never places bets, logs in to bookmakers or touches bookmaker/excha
 Money is integer pence everywhere (no floating point). Odds/commission use exact decimals and
 round to the penny once, half-up.
 
+* **Hub bank and lender.** Betting accounts only deal with the user's matched-betting hub bank (deposits leave it, withdrawals land in it). Temporary funding can come from another bank, the lender, routed through the hub. The lender is tracked separately from the payment rail: a withdrawal landing in the hub never repays the lender by itself, and the hub is never assumed to be the lender. When the hub sends the money back to the lender, that is a funding repayment (bank to bank). It moves no betting money: it lowers temporary funding outstanding, and
+  that much of what was counted as withdrawn was really the lender's money going back (own capital rises by the same
+  amount, so it is never counted as withdrawn twice). It is never more than is outstanding to the lender, and it is
+  reversible like any transfer.
 * **Transfers are never profit or loss.** A bank account (e.g. Lloyds) is a *funding source*, not
   bankroll. Bank → bookmaker/exchange defaults to **temporary funding**; bookmaker/exchange → bank
   defaults to a **return of temporary funding**, and anything above what is outstanding from that

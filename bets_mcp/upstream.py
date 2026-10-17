@@ -31,7 +31,7 @@ CHANGES = ("update_free_bet", "link_free_bet_to_position", "unlink_free_bet_from
            "mark_exchange_fully_matched", "record_matched_bet", "record_funding_transfer", "add_record_evidence",
            "expect_reward", "reconcile_rewards", "mark_reward_received", "update_offer_progress",
            "set_position_outcomes", "dismiss_issue", "reopen_issue", "mark_alerts_notified",
-           "record_unhedged_qualifier", "set_hedge_strategy")
+           "record_unhedged_qualifier", "set_hedge_strategy", "record_funding_repayment")
 
 
 class Upstream:

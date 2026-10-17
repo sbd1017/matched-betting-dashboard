@@ -228,14 +228,97 @@ def update_account(conn, account_id: int, *, name=None, commission_bp=None, acti
 
 
 # ---------------------------------------------------------------- transfers (capital)
+#
+# Banking model: betting accounts only ever deal with the user's matched-betting hub bank (deposits leave it,
+# withdrawals land in it). Temporary funding can come from another bank, the lender, routed through the hub
+# (lender -> hub -> betting account). The lender is tracked separately from the payment rail: temporary_funding is
+# owed to the bank it came from, and it is repaid either by a betting withdrawal straight to that bank
+# (temporary_return) or by a bank-to-bank funding_repayment (e.g. hub -> lender). A withdrawal landing in the hub
+# never repays another bank by itself, and the hub is never assumed to be the lender.
+
+REPAYMENT_TYPES = ("temporary_return", "funding_repayment")
+REPAID_SQL = "capital_type IN ('temporary_return', 'funding_repayment')"     # transfers that repay temporary funding
+
 
 def outstanding_temporary(conn, bank_account_id: int) -> int:
-    """Temporary funding from this bank still sitting in betting accounts."""
+    """Temporary funding from this bank (the lender) not yet repaid to it."""
     got = conn.execute(
         "SELECT coalesce(sum(CASE WHEN capital_type = 'temporary_funding' AND from_account_id = :b THEN amount_pence END), 0) -"
-        "       coalesce(sum(CASE WHEN capital_type = 'temporary_return' AND to_account_id = :b THEN temp_portion_pence END), 0)"
+        f"       coalesce(sum(CASE WHEN {REPAID_SQL} AND to_account_id = :b THEN temp_portion_pence END), 0)"
         " FROM transfers WHERE voided_at IS NULL", {"b": bank_account_id}).fetchone()[0]
     return max(0, got)
+
+
+def funding_ledger(conn, lender_id: int) -> dict:
+    """The lender's temporary funding and repayments in time order, allocated oldest first (the same rule as
+    temp_portion_pence): per funding transfer what was repaid and by which transfers, and per repayment what it
+    repaid and what was still outstanding after it."""
+    fundings, repayments, queue = {}, {}, []
+    outstanding = 0
+    for t in conn.execute("SELECT * FROM transfers WHERE voided_at IS NULL AND ((from_account_id = :b AND capital_type = "
+                          f"'temporary_funding') OR (to_account_id = :b AND {REPAID_SQL})) ORDER BY at, id",
+                          {"b": lender_id}).fetchall():
+        if t["capital_type"] == "temporary_funding":
+            f = {"transfer_id": t["id"], "amount": t["amount_pence"], "repaid": 0, "repaid_by": [], "at": t["at"]}
+            fundings[t["id"]] = f
+            queue.append(f)
+            outstanding += t["amount_pence"]
+            continue
+        left, allocations = t["temp_portion_pence"], []
+        for f in queue:
+            if not left:
+                break
+            take = min(left, f["amount"] - f["repaid"])
+            if take:
+                f["repaid"] += take
+                f["repaid_by"].append({"transfer_id": t["id"], "amount": take})
+                allocations.append({"funding_transfer_id": f["transfer_id"], "amount": take})
+                left -= take
+        outstanding -= t["temp_portion_pence"]
+        repayments[t["id"]] = {"repaid": t["temp_portion_pence"], "allocations": allocations,
+                               "outstanding_after": outstanding}
+    for f in fundings.values():
+        f["outstanding"] = f["amount"] - f["repaid"]
+    return {"fundings": fundings, "repayments": repayments, "outstanding": max(0, outstanding)}
+
+
+def record_funding_repayment(conn, *, from_id: int, lender_id: int, amount: int, at: str | None = None,
+                             notes: str = "") -> int:
+    """A bank pays temporary funding back to the bank that lent it (typically the hub bank -> the lender). Never
+    more than is outstanding to the lender (refused, not split: the rest is not matched-betting money), never
+    profit or loss, and no betting balance moves. Reversible like any transfer (void_transfer)."""
+    if amount <= 0:
+        raise UserError("Repayment amount must be more than zero")
+    if from_id == lender_id:
+        raise UserError("Choose the bank the money came from and the bank that lent it (two different banks)")
+    src = _need(conn, "accounts", from_id, "Paying bank")
+    lender = _need(conn, "accounts", lender_id, "Lender")
+    if src["kind"] != "bank" or lender["kind"] != "bank":
+        raise UserError("A funding repayment goes from one bank to another; betting withdrawals are ordinary transfers")
+    owed = outstanding_temporary(conn, lender_id)
+    if not owed:
+        raise UserError(f"No temporary funding from {lender['name']} is outstanding, so there is nothing to repay")
+    if amount > owed:
+        raise UserError(f"Only {fmt(owed)} of temporary funding from {lender['name']} is outstanding. Record a "
+                        f"repayment of {fmt(owed)}; any extra you sent is not matched-betting money")
+    at = at or times.now_iso()
+    cur = conn.execute("INSERT INTO transfers (from_account_id, to_account_id, amount_pence, at, capital_type, "
+                       "temp_portion_pence, notes, created_at) VALUES (?, ?, ?, ?, 'funding_repayment', ?, ?, ?)",
+                       (from_id, lender_id, amount, at, amount, notes.strip(), times.now_iso()))
+    tid = cur.lastrowid
+    label = f"{src['name']} → {lender['name']} (repays temporary funding)"
+    post(conn, account_id=from_id, amount=-amount, category="transfer", at=at, key=f"transfer:{tid}:out",
+         description=label, transfer_id=tid)
+    post(conn, account_id=lender_id, amount=amount, category="transfer", at=at, key=f"transfer:{tid}:in",
+         description=label, transfer_id=tid)
+    _recompute_temp_portions(conn, lender_id)              # a backdated repayment re-allocates later ones
+    led = funding_ledger(conn, lender_id)
+    audit(conn, "transfer", tid, "created", None, {
+        "from": src["name"], "to": lender["name"], "amount_pence": amount, "capital_type": "funding_repayment",
+        "lender": lender["name"], "paid_from": src["name"], "temp_portion_pence": amount,
+        "allocations": (led["repayments"].get(tid) or {}).get("allocations", []),
+        "outstanding_after_pence": led["outstanding"]})
+    return tid
 
 
 def default_capital_type(from_kind: str, to_kind: str) -> str:
@@ -245,7 +328,8 @@ def default_capital_type(from_kind: str, to_kind: str) -> str:
         return "temporary_return"
     if from_kind in BETTING_KINDS and to_kind in BETTING_KINDS:
         return "internal"
-    raise UserError("Transfers between two bank accounts are not betting activity")
+    raise UserError("Transfers between two bank accounts are not betting activity (to record paying temporary "
+                    "funding back to the bank that lent it, record a funding repayment)")
 
 
 def allowed_capital_types(natural: str) -> set[str]:
@@ -338,6 +422,8 @@ def void_transfer(conn, transfer_id: int, note: str = "") -> None:
 
 
 def _bank_side(conn, t: dict) -> int | None:
+    if t["capital_type"] == "funding_repayment":            # bank to bank: the lender is the side that matters
+        return t["to_account_id"]
     for aid in (t["from_account_id"], t["to_account_id"]):
         acc = row(conn, "accounts", aid)
         if acc and acc["kind"] == "bank":
@@ -352,7 +438,7 @@ def _recompute_temp_portions(conn, bank_id: int | None) -> None:
         return
     outstanding = 0
     for t in conn.execute("SELECT * FROM transfers WHERE voided_at IS NULL AND ((from_account_id = :b AND capital_type = "
-                          "'temporary_funding') OR (to_account_id = :b AND capital_type = 'temporary_return')) "
+                          f"'temporary_funding') OR (to_account_id = :b AND {REPAID_SQL})) "
                           "ORDER BY at, id", {"b": bank_id}).fetchall():
         if t["capital_type"] == "temporary_funding":
             want = t["amount_pence"]

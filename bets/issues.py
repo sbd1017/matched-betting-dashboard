@@ -18,7 +18,7 @@ import re
 from datetime import timedelta
 from decimal import Decimal
 
-from . import calc, commission, metrics, times
+from . import calc, commission, metrics, services, times
 from .money import fmt
 
 SEVERITY_ORDER = {"fix": 0, "act": 1, "info": 2}
@@ -183,7 +183,7 @@ def collect(conn, s: metrics.Summary | None = None, include_dismissed: bool = Fa
     _plan_checks(conn, out, now)
     _reward_checks(conn, out, now)
     temp_raw = conn.execute("SELECT coalesce(sum(CASE WHEN capital_type = 'temporary_funding' THEN amount_pence END), 0) - "
-                            "coalesce(sum(CASE WHEN capital_type = 'temporary_return' THEN temp_portion_pence END), 0) "
+                            f"coalesce(sum(CASE WHEN {services.REPAID_SQL} THEN temp_portion_pence END), 0) "
                             "FROM transfers WHERE voided_at IS NULL").fetchone()[0]
     if temp_raw < 0:
         out.append(_issue("funding:negative", "fix", "Funding", "More temporary funding returned than borrowed",

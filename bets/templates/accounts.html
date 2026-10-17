@@ -66,7 +66,7 @@
   {% for t in transfers %}
   <div class="item{{ ' m3' if t.reversed }}">
     <span class="item-main"><b>#{{ t.id }} · {{ t.amount }} {{ t["from"] }} → {{ t.to }}</b>
-      <span class="small muted">{{ t.when }} · {{ CAPITAL_LABELS.get(t.funding_type, t.funding_type) }}{% if t.repays_temporary_funding %} · repays {{ t.repays_temporary_funding }}{% endif %}{% if t.return_by %} · return by {{ t.return_by }}{% endif %}{% if t.reversed %} · reversed {{ t.reversed_at }}{% endif %}</span>
+      <span class="small muted">{{ t.when }} · {{ CAPITAL_LABELS.get(t.funding_type, t.funding_type) }}{% if t.repays_temporary_funding %} · repays {{ cur() }}{{ t.repays_temporary_funding }}{% if t.lender %} of {{ t.lender }}'s temporary funding{% endif %}{% endif %}{% if t.return_by %} · return by {{ t.return_by }}{% endif %}{% if t.reversed %} · reversed {{ t.reversed_at }}{% endif %}</span>
       {% if t.notes %}<span class="small m2">{{ t.notes|truncate(140) }}</span>{% endif %}</span>
     {% if not t.reversed %}
     <details class="span-all"><summary class="small">Correct</summary>

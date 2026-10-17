@@ -39,8 +39,9 @@
     <a class="item-main" href="{{ u('/imports/' ~ r.id) }}"><b>{{ r.title }}</b>
       <span class="muted small">{{ KIND_TITLES[r.kind] }} · {{ SOURCE_LABELS.get(r.source, r.source) }} · {{ local(r.created_at) }}{% if r.kind == 'position' %} · {{ r.candidate.legs|length }} bet(s){% endif %}{% if r.edited_at %} · edited{% endif %}</span>
       {% if r.issue %}<span class="small warn-text">{{ 'Waits for: ' ~ r.issue[6:] if r.issue.startswith('after ') else 'Cannot confirm yet: ' ~ r.issue }}</span>{% endif %}
-      {% if r.hold_reason and r.status == 'needs_confirmation' %}<span class="small warn-text">Held for review: {{ r.hold_reason }}</span>{% endif %}</a>
-    <span class="item-side">{{ pill('Pending' if r.status == 'needs_confirmation' else r.status|capitalize, 'warn' if r.status == 'needs_confirmation' else ('ok' if r.status == 'applied' else '')) }}{% if r.decided_by == 'assistant-auto' %}{{ pill('Auto-confirmed', 'info') }}{% elif r.decided_by == 'user-bulk' %}{{ pill('Bulk') }}{% endif %}</span>
+      {% if r.hold_reason and r.status == 'needs_confirmation' %}<span class="small warn-text">Held for review: {{ r.hold_reason }}</span>{% endif %}
+      {% if r.decided_by == 'system' and r.hold_reason %}<span class="small muted">{{ r.hold_reason|capitalize }}. Nothing more to do.</span>{% endif %}</a>
+    <span class="item-side">{{ pill('Pending' if r.status == 'needs_confirmation' else ('Already applied' if r.status == 'applied' and r.decided_by == 'system' else ('Superseded' if r.decided_by == 'system' else r.status|capitalize)), 'warn' if r.status == 'needs_confirmation' else ('ok' if r.status == 'applied' else '')) }}{% if r.decided_by == 'assistant-auto' %}{{ pill('Auto-confirmed', 'info') }}{% elif r.decided_by == 'user-bulk' %}{{ pill('Bulk') }}{% endif %}</span>
   </div>
   {% else %}<p class="muted">Nothing imported. Things sent from ChatGPT or other tools wait here until you confirm them.</p>{% endfor %}
 </section>

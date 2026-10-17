@@ -83,6 +83,12 @@ The app and nginx send `default-src 'self'; script-src 'self'; style-src 'self'`
   (`services.set_hedge_strategy`, `hedge_state`); deliberately unhedged qualifiers are not "incomplete".
   `times.from_local_input(..., happened=True)` for times that already happened.
 
+## Banking model (temporary funding)
+
+Betting accounts only deal with the user's matched-betting hub bank (deposits leave it, withdrawals land in it). Temporary funding can come from another bank, the lender, routed through the hub. The lender is tracked separately from the payment rail: a withdrawal landing in the hub never repays the lender by itself, and the hub is never assumed to be the lender. When the hub sends the money back to the lender, that is a funding repayment (bank to bank). Code: `services.REPAID_SQL` / `REPAYMENT_TYPES` (what repays temporary funding: temporary_return and
+funding_repayment), `services.record_funding_repayment`, `services.funding_ledger` (oldest-first allocation). Any new
+reader of "what has been repaid" must use REPAID_SQL. Ordinary bank → bank transfers stay refused.
+
 ## Rules for changing the data model
 
 - Every change to money goes through `bets/services.py` (audited; ledger entries superseded, never edited).
