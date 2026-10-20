@@ -1,0 +1,48 @@
+# The public demo: the app with made-up records and no sign-in (demo/serve.py), behind nginx at /bets/ (path kept).
+# Installed as /etc/systemd/system/demo-bets.service by demo/deploy/install.sh. On the mubar.uk host a prefix
+# drop-in for demo-*.service also sets User=demo, the demos' slice and the common sandbox.
+[Unit]
+Description=Matched Betting demo (made-up records, no sign-in, reset nightly)
+After=network.target
+
+[Service]
+Type=simple
+User=demo
+Group=demo
+WorkingDirectory=/opt/demos/bets/app
+Environment=PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+Environment=BETS_HOST=127.0.0.1 BETS_PORT=8911 BETS_DATA_DIR=/srv/demos/bets/var
+Environment=BETS_PUBLIC_ORIGINS=https://mubar.uk
+Environment=BETS_SECURE_COOKIES=1
+ExecStart=/opt/demos/bets/venv/bin/python -m demo.serve
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/demos/bets
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# It never connects anywhere: only nginx on this host talks to it.
+IPAddressDeny=any
+IPAddressAllow=localhost
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+MemoryMax=320M
+TasksMax=32
+
+[Install]
+WantedBy=multi-user.target

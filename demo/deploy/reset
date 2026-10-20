@@ -1,0 +1,15 @@
+#!/bin/sh
+# Nightly reset of the Matched Betting demo: build a fresh set of made-up records (dated back from today), then swap
+# it in. Run as `demo` by demo-bets-reset.service with demo-bets.service stopped; DEMO_DIR is /srv/demos/bets.
+# Installed (root-owned, not writable by the demo user) as /usr/local/lib/demos/bets/reset by demo/deploy/install.sh.
+# If the build fails the old records stay, so the demo still starts.
+set -eu
+DIR=${DEMO_DIR:-/srv/demos/bets}
+APP=/opt/demos/bets
+umask 077
+rm -rf "$DIR/next" "$DIR/old"
+cd "$APP/app"
+"$APP/venv/bin/python" -m demo.seed --data-dir "$DIR/next"
+if [ -d "$DIR/var" ]; then mv "$DIR/var" "$DIR/old"; fi
+mv "$DIR/next" "$DIR/var"
+rm -rf "$DIR/old"
