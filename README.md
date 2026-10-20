@@ -6,6 +6,17 @@ Raspberry Pi at home and I use it every day.
 It's a ledger, not a bot. You place your bets yourself and record them here. It never logs in to a bookmaker
 or exchange and it never moves money.
 
+## Live demo
+
+**[mubar.uk/bets](https://mubar.uk/bets/)**: open it and use it like your own, no sign-in needed.
+
+- It holds about 18 months of made-up records. The bookmakers, exchanges and fixtures are real names, but
+  every bet, balance and profit figure is invented. No real money or accounts are involved.
+- You can log bets, settle them, use the calculator and work through offers.
+- The ChatGPT connection, file uploads and the currency switch are turned off.
+- Everyone shares the same demo, so don't type in anything real. It goes back to the start every night at
+  04:00 UK time.
+
 ![The dashboard](docs/screenshots/dashboard.png)
 
 ## What it does
