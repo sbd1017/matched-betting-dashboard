@@ -44,8 +44,8 @@ Every page under https://example.com/bets/ uses this design. The stylesheet is
 | `--gain` `--loss` `--warn` | #0A7A4F #D0303A #B76E00 | #45C78B #FF6B76 #F0A73A | semantic |
 | `--loss-wash` `--warn-wash` | #FDECEC #FFF4E0 | #2C1517 #2A2010 | tinted backgrounds for alerts |
 
-Theme: follows the system by default; `data-theme="light|dark"` on `<html>` overrides it (toggle in
-`app.js`, remembered in `localStorage`). Change `<meta name="color-scheme">` in `base.html` to `light dark`.
+Theme: dark by default on every device, whatever the system setting. Light is opt-in: `data-theme="light"`
+on `<html>` (toggle in `app.js`, remembered in `localStorage`). `<meta name="color-scheme">` in `base.html` is `dark`.
 
 ## 4. Type
 

@@ -415,8 +415,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @router.get("/manifest.webmanifest")
     def manifest():
         return JSONResponse({"name": "Matched betting", "short_name": "Bets", "start_url": BASE + "/",
-                             "scope": BASE + "/", "display": "standalone", "background_color": "#ffffff",
-                             "theme_color": "#ffffff",
+                             "scope": BASE + "/", "display": "standalone", "background_color": "#0f1012",
+                             "theme_color": "#0f1012",
                              "icons": [{"src": BASE + "/static/icon.svg", "sizes": "any", "type": "image/svg+xml"}]},
                             media_type="application/manifest+json")
 

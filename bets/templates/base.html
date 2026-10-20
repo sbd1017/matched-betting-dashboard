@@ -5,9 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="csrf-token" content="{{ csrf }}">
   <meta name="app-base" content="{{ BASE }}">
-  <meta name="color-scheme" content="light dark">
-  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#0f1012" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0f1012">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -18,9 +17,9 @@
   <link rel="icon" href="{{ u('/static/icon.svg') }}" type="image/svg+xml">
   <link rel="apple-touch-icon" href="{{ u('/static/icon.svg') }}">
   <link rel="preload" href="{{ u('/static/fonts/Archivo-Variable.woff2') }}" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="{{ u('/static/design.css') }}?v=19">
-  {% block scripts %}<script src="{{ u('/static/theme.js') }}?v=4"></script>
-  <script src="{{ u('/static/app.js') }}?v=10" defer></script>{% endblock %}
+  <link rel="stylesheet" href="{{ u('/static/design.css') }}?v=20">
+  {% block scripts %}<script src="{{ u('/static/theme.js') }}?v=5"></script>
+  <script src="{{ u('/static/app.js') }}?v=11" defer></script>{% endblock %}
 </head>
 <body>
 {% set nav = [('/', 'Dashboard', ''), ('/operations', 'Operations', 'operations'), ('/profit', 'Profit', ''), ('/positions', 'Positions', 'positions'), ('/offers', 'Offers', 'offers'),
@@ -40,7 +39,7 @@
       <a class="ib" href="{{ u('/search') }}" aria-label="Search" title="Search (⌘K)"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg></a>
       <button class="ib" type="button" data-drawer-open="calc" aria-label="Lay calculator" title="Lay calculator (C)"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="1"/><path d="M8 7h8M8 11h2M12 11h2M16 11h0M8 15h2M12 15h2M8 18h6"/></svg></button>
       <a class="ib" href="{{ u('/help') }}" aria-label="Help" title="Help: what the figures mean"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17.5h0"/></svg></a>
-      <button class="ib" type="button" data-theme-toggle aria-label="Switch between system, light and dark theme" title="Theme"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg></button>
+      <button class="ib" type="button" data-theme-toggle aria-label="Switch between dark and light theme" title="Theme"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg></button>
       <form method="post" action="{{ u('/logout') }}" class="signout"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="ib" aria-label="Sign out" title="Sign out"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/></svg></button></form>
       <a class="btn k" href="{{ u('/quick-add') }}">Quick add</a>
     </div>

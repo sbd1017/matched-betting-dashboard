@@ -111,13 +111,13 @@
     el.style.width = Math.max(0, Math.min(1, parseFloat(el.getAttribute("data-left")))) * 100 + "%";
   });
 
-  // v3: theme toggle (system -> light -> dark). theme.js applies the saved choice before paint.
-  var themes = ["auto", "light", "dark"];
-  function savedTheme() { try { return window.localStorage.getItem("mb-theme") || "auto"; } catch (e) { return "auto"; } }
+  // Theme toggle (dark <-> light). Dark is the default; theme.js applies a saved "light" before paint.
+  var themes = ["dark", "light"];
+  function savedTheme() { try { return window.localStorage.getItem("mb-theme") === "light" ? "light" : "dark"; } catch (e) { return "dark"; } }
   function applyTheme(t) {
-    if (t === "auto") document.documentElement.removeAttribute("data-theme");
-    else document.documentElement.setAttribute("data-theme", t);
-    document.querySelectorAll("[data-theme-toggle]").forEach(function (b) { b.title = "Theme: " + (t === "auto" ? "system" : t); });
+    if (t === "light") document.documentElement.setAttribute("data-theme", "light");
+    else document.documentElement.removeAttribute("data-theme");
+    document.querySelectorAll("[data-theme-toggle]").forEach(function (b) { b.title = "Theme: " + t; });
   }
   applyTheme(savedTheme());
   document.querySelectorAll("[data-theme-toggle]").forEach(function (btn) {
