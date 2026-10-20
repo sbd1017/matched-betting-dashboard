@@ -97,6 +97,14 @@ SEASONAL = {  # festival offers: bookmaker, title template, stake, free bet each
                  ("Sky Bet", "World Cup: bet £10, get a £5 free bet", 1000, 500),
                  ("Coral", "World Cup: bet £10, get a £5 free bet", 1000, 500)],
 }
+COMPETITION_OFFERS = {
+    "pl": ("Bet £10 on the Premier League, get a £5 free bet", "pl"),
+    "champ": ("Bet £10 on the Championship, get a £5 free bet", "champ"),
+    "cl": ("Bet £10 on the Champions League, get a £5 free bet", "cl"),
+    "wc": ("World Cup: bet £10, get a £5 free bet", "football"),
+    "tennis": ("Bet £10 on the tennis, get a £5 free bet", "tennis"),
+    "racing": ("Bet £10 on any race, get a £5 free bet", "racing"),
+}
 SCOPE = {"pl": "any Premier League match", "champ": "any Championship match", "cl": "any Champions League match",
          "football": "any football match", "racing": "any UK or Irish race", "tennis": "any tennis match",
          "any": "any sport", "bb": "a Bet Builder with 3 or more selections"}
@@ -303,7 +311,7 @@ class Demo:
         com = self.commission(ex)
         if self.rng.random() < 0.6:
             p11, p22 = self.rng.uniform(0.105, 0.13), self.rng.uniform(0.05, 0.065)
-            back = Decimal(str(round(1 / (p11 + p22) * self.rng.uniform(0.80, 0.87), 2)))
+            back = Decimal(str(round(1 / (p11 + p22) * self.rng.uniform(0.83, 0.9), 2)))
             buckets = ["1-1", "2-2", "Any other score"]
             covers = ["1-1", "2-2"]
             lays = [("1-1", fx.to_tick(1 / p11 * self.rng.uniform(1.0, 1.04))),
@@ -312,7 +320,7 @@ class Demo:
             probs = {"1-1": p11, "2-2": p22}
         else:
             p21 = self.rng.uniform(0.085, 0.105)
-            back = Decimal(str(round(1 / p21 * self.rng.uniform(0.84, 0.9), 2)))
+            back = Decimal(str(round(1 / p21 * self.rng.uniform(0.86, 0.93), 2)))
             buckets = ["2-1", "Any other score"]
             covers = ["2-1"]
             lays = [("2-1", fx.to_tick(1 / p21 * self.rng.uniform(1.0, 1.035)))]
@@ -320,7 +328,7 @@ class Demo:
             probs = {"2-1": p21}
         h = outcomes.hedge(buckets, [{"stake_pence": stake, "odds": str(back), "covers": covers}],
                            [{"odds": str(o), "covers": [b], "commission_bp": com} for b, o in lays])
-        if h["table"]["worst"] < -160:
+        if h["table"]["worst"] < -150:
             return None
         self.used.add((book, f.event, selection))
         self.fund_bookie(book, stake)
@@ -375,18 +383,15 @@ class Demo:
                 fixtures: list, flags: dict) -> None:
         """Place the qualifying bet (from what the oddsmatcher shows now), then settle it and collect the reward."""
         if scope == "bb":
-            for f in fixtures:
-                if f.at > Clock.t + timedelta(minutes=20) and self.place_builder(book=book, f=f, stake=stake,
-                                                                                 offer_id=offer_id):
-                    break
-            else:
-                return
+            tries = [f for f in fixtures if f.at > Clock.t + timedelta(minutes=20)] * 3
+            if not any(self.place_builder(book=book, f=f, stake=stake, offer_id=offer_id) for f in tries):
+                return self.skip(offer_id)
         else:
             lo, hi = (1.7, 4.0) if scope != "racing" else (2.5, 7.0)
             pick = self.best_bet(book, "qualifying", stake, [f for f in fixtures if f.at > Clock.t + timedelta(minutes=20)],
                                  lo, hi, min_odds)
             if not pick:
-                return
+                return self.skip(offer_id)
             f, s, back, lay, ex, m = pick
             self.place_simple(kind="qualifying", book=book, f=f, s=s, back=back, lay=lay, ex=ex, m=m, stake=stake,
                               offer_id=offer_id, settle=not flags.get("no_settle"))
@@ -398,6 +403,10 @@ class Demo:
             self.at(self.jitter(Clock.t, 5, 90), self.reward, offer_id, book)
         else:
             self.at(self.reward_time(), self.reward_after_settle, offer_id, book)
+
+    def skip(self, offer_id: int) -> None:
+        """No close enough match before the deadline: left alone (people skip the odd offer)."""
+        services.set_offer_status(self.conn, offer_id, "abandoned", note="no close enough match in time, skipped")
 
     def reward_time(self) -> datetime:
         return Clock.t + timedelta(minutes=10)
@@ -593,15 +602,14 @@ class Demo:
     def plant_started(self) -> None:
         """Last night's qualifier that nobody has settled yet (Issues: Started, enter the result)."""
         yday = (self.end - timedelta(days=1)).astimezone(UK).date()
-        spec = ("Coral", "Bet £10 on the Championship, get a £5 free bet", "reload", "football", 1000, "1.5", 1, 500,
-                [], 1, "bet_settled")
         fixtures = [f for f in fx.on(yday) if f.end < self.end and f.sport == "football"] or \
             [f for f in fx.on(yday) if f.end < self.end and f.sport != "racing"] or \
             [f for f in fx.on(yday) if f.end < self.end]
         if fixtures:
             f = fixtures[-1]
-            spec = (*spec[:3], {"football": "football", "tennis": "tennis", "racing": "racing"}[f.sport], *spec[4:])
-            self.reload_on(spec, [f], {"no_settle": True})
+            title, scope = COMPETITION_OFFERS[f.competition if f.competition in COMPETITION_OFFERS else f.sport]
+            self.reload_on(("Coral", title, "reload", scope, 1000, "1.5", 1, 500, [], 1, "bet_settled"), [f],
+                           {"no_settle": True})
 
     def plant_overdue(self) -> None:
         """A reward that hasn't arrived two days after the qualifier settled (Issues: Reward)."""
@@ -630,9 +638,13 @@ class Demo:
         book = "William Hill"
         if book not in self.acc:
             return
-        oid = self.create_offer(book=book, title="Bet £10 on the Premier League, get a £5 free bet", offer_type="reload",
-                                scope="football", stake=1000, min_odds="1.5", count=1, each=500, expiry_days=7,
-                                trigger="bet_settled", expires=later[0].at + timedelta(days=8))
+        upcoming = later
+        first = later[0]
+        title, scope = COMPETITION_OFFERS[first.competition if first.competition in COMPETITION_OFFERS else first.sport]
+        later = [f for f in later if self.matches_scope(f, scope) and f.competition == first.competition] or later
+        oid = self.create_offer(book=book, title=title, offer_type="reload", scope=scope, stake=1000, min_odds="1.5",
+                                count=1, each=500, expiry_days=7, trigger="bet_settled",
+                                expires=later[0].at + timedelta(days=8))
         pick = self.best_bet(book, "qualifying", 1000, later[:6], 1.7, 4.0, "1.5")
         if pick:
             f, s, back, lay, ex, m = pick
@@ -645,6 +657,13 @@ class Demo:
                                                "allow_duplicate": True})
             plans.validate(self.conn, plan_id)
             plans.place_back(self.conn, plan_id, stake="10.00", odds=str(back))
+        football = [f for f in upcoming if f.sport == "football"]
+        if football and "Paddy Power" in self.acc:             # an open Bet Builder: its outcome table and liability
+            oid = self.create_offer(book="Paddy Power", title="Bet Builder Club: bet £10 on a Bet Builder, get a £5 free "
+                                    "bet", offer_type="bet_builder", scope="bb", stake=1000, min_odds="4.0", count=1,
+                                    each=500, expiry_days=7, trigger="bet_settled",
+                                    expires=football[0].at + timedelta(days=8))
+            any(self.place_builder(book="Paddy Power", f=f, stake=1000, offer_id=oid) for f in football * 3)
         tokens = self.conn.execute("SELECT f.id, a.name FROM free_bets f JOIN accounts a ON a.id = f.account_id "
                                    "WHERE f.status = 'available' AND f.deleted_at IS NULL ORDER BY f.expires_at").fetchall()
         soon = [f for f in self.candidates(today, 3, self.end + timedelta(hours=8), None, "any") if f.sport != "racing"]
