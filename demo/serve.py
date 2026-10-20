@@ -125,6 +125,7 @@ class DemoGate:
             for title in HIDDEN_SETTINGS:
                 html = re.sub(r'<section class="panel"[^>]*>\s*<h2>' + re.escape(title) + r".*?</section>\s*", "", html,
                               flags=re.S)
+            html = re.sub(r" · \d+ backup\(s\)[^<]*", "", html)
             html = re.sub(r"<li>Signed in as <b>.*?</li>", "<li>Demo: no sign-in, and every change is undone at 4am "
                           "(UK time) when the made-up records are rebuilt.</li>", html, flags=re.S)
         return html

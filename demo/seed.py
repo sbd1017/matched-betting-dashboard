@@ -57,28 +57,29 @@ SIGNUPS = [
 
 # bookmaker, title, offer type, what it is on, stake, min odds, free bets, each, weekdays, chance a week, trigger
 RELOADS = [
-    ("William Hill", "Bet £10 on the Premier League, get a £5 free bet", "reload", "pl", 1000, "1.5", 1, 500, [5, 6], 0.8, "bet_settled"),
+    ("William Hill", "Bet £20 on the Premier League, get a £10 free bet", "reload", "pl", 2000, "1.5", 1, 1000, [5, 6], 0.8, "bet_settled"),
     ("Paddy Power", "Bet Builder Club: bet £10 on a Bet Builder, get a £5 free bet", "bet_builder", "bb", 1000, "4.0", 1, 500, [5, 6], 0.8, "bet_settled"),
     ("Sky Bet", "Bet £10 on the Champions League, get a £5 free bet", "reload", "cl", 1000, "1.5", 1, 500, [1, 2], 0.85, "bet_placed"),
     ("Ladbrokes", "Bet £5 on Saturday football, get a £5 free bet", "reload", "football", 500, "1.5", 1, 500, [5], 0.8, "bet_settled"),
-    ("Coral", "Bet £10 on the Championship, get a £5 free bet", "reload", "champ", 1000, "1.5", 1, 500, [5, 1, 4], 0.75, "bet_settled"),
+    ("Coral", "Bet £20 on the Championship, get a £10 free bet", "reload", "champ", 2000, "1.5", 1, 1000, [5, 1, 4], 0.75, "bet_settled"),
     ("Betfred", "Bet £10 on a Bet Builder, get a £5 free bet", "bet_builder", "bb", 1000, "4.0", 1, 500, [1, 2, 5], 0.7, "bet_settled"),
     ("Betfred", "Super Sunday: bet £20, get a £10 free bet", "reload", "football", 2000, "1.5", 1, 1000, [6], 0.6, "bet_settled"),
     ("BetVictor", "Bet £20 on Saturday racing, get a £10 free bet", "reload", "racing", 2000, "2.0", 1, 1000, [5], 0.7, "bet_settled"),
     ("Betway", "Bet £10 on the tennis, get a £5 free bet", "reload", "tennis", 1000, "1.5", 1, 500, [2, 3, 4], 0.8, "bet_settled"),
-    ("Unibet", "Weekly reload: bet £10 on racing, get a £5 free bet", "reload", "racing", 1000, "2.0", 1, 500, [2, 3], 0.7, "bet_settled"),
+    ("Unibet", "Weekly reload: bet £20 on racing, get a £10 free bet", "reload", "racing", 2000, "2.0", 1, 1000, [2, 3], 0.7, "bet_settled"),
     ("BoyleSports", "Monday Club: bet £10, get a £5 free bet", "reload", "any", 1000, "1.5", 1, 500, [0], 0.7, "bet_settled"),
-    ("Virgin Bet", "Bet £10 on the Saturday football, get a £5 free bet", "reload", "football", 1000, "1.5", 1, 500, [5], 0.65, "bet_settled"),
+    ("Virgin Bet", "Bet £20 on the Saturday football, get a £10 free bet", "reload", "football", 2000, "1.5", 1, 1000, [5], 0.65, "bet_settled"),
     ("888sport", "Bet £10 on the Premier League, get a £5 free bet", "reload", "pl", 1000, "1.5", 1, 500, [6, 0], 0.6, "bet_settled"),
     ("Midnite", "Bet £10 on any football, get a £5 free bet", "reload", "football", 1000, "1.5", 1, 500, [1, 5], 0.5, "bet_settled"),
     ("Kwiff", "Bet £10 get a £5 free bet", "reload", "any", 1000, "1.5", 1, 500, [3, 4], 0.4, "bet_settled"),
     ("Paddy Power", "Bet £10 on any race, get a £5 free bet", "reload", "racing", 1000, "2.0", 1, 500, [0, 1, 2, 3, 4], 0.65, "bet_settled"),
-    ("Sky Bet", "Bet £10 on Saturday racing, get a £5 free bet", "reload", "racing", 1000, "2.0", 1, 500, [5], 0.6, "bet_settled"),
+    ("Sky Bet", "Bet £20 on Saturday racing, get a £10 free bet", "reload", "racing", 2000, "2.0", 1, 1000, [5], 0.6, "bet_settled"),
     ("William Hill", "Bet £10 on any race, get a £5 free bet", "reload", "racing", 1000, "2.0", 1, 500, [2, 3, 4], 0.55, "bet_settled"),
     ("Ladbrokes", "Bet £10 on the Premier League, get a £5 free bet", "reload", "pl", 1000, "1.5", 1, 500, [6, 0], 0.6, "bet_settled"),
     ("Coral", "Bet £10 on Sunday football, get a £5 free bet", "reload", "football", 1000, "1.5", 1, 500, [6], 0.6, "bet_settled"),
     ("LiveScore Bet", "Bet £10 on the Premier League, get a £5 free bet", "reload", "pl", 1000, "1.5", 1, 500, [5], 0.5, "bet_settled"),
 ]
+RELOAD_RATE = 0.6          # share of the weeks each reload is taken up (the app checks every offer on each page)
 SEASONAL = {  # festival offers: bookmaker, title template, stake, free bet each
     "cheltenham": [("Betfred", "Cheltenham Day {n}: bet £10, get a £5 free bet", 1000, 500),
                    ("Coral", "Cheltenham Day {n}: bet £10, get a £5 free bet", 1000, 500),
@@ -306,29 +307,31 @@ class Demo:
     def place_builder(self, *, book: str, f: fx.Fixture, stake: int, offer_id=None) -> int | None:
         """A Bet Builder covered by correct score lays: Draw / BTTS / Under 4.5 (1-1 or 2-2), or Home / BTTS / Under
         3.5 (2-1). The outcome table is what the plan records, so liability and settlement use the real outcomes."""
-        home, away = f.home, f.away
-        ex = self.exchange_for("football")
+        home = f.home
+        ex = self.exchange_for("football")             # correct scores: the cheaper exchanges, where there is money
+        if ex == "Betfair Exchange":
+            ex = "Smarkets"
         com = self.commission(ex)
         if self.rng.random() < 0.6:
             p11, p22 = self.rng.uniform(0.105, 0.13), self.rng.uniform(0.05, 0.065)
-            back = Decimal(str(round(1 / (p11 + p22) * self.rng.uniform(0.83, 0.9), 2)))
+            back = Decimal(str(round(1 / (p11 + p22) * self.rng.uniform(0.90, 0.97), 2)))
             buckets = ["1-1", "2-2", "Any other score"]
             covers = ["1-1", "2-2"]
-            lays = [("1-1", fx.to_tick(1 / p11 * self.rng.uniform(1.0, 1.04))),
-                    ("2-2", fx.to_tick(1 / p22 * self.rng.uniform(1.0, 1.05)))]
+            lays = [("1-1", fx.to_tick(1 / p11 * self.rng.uniform(1.0, 1.03))),
+                    ("2-2", fx.to_tick(1 / p22 * self.rng.uniform(1.0, 1.04)))]
             selection = "Draw / Both teams to score / Under 4.5 goals"
             probs = {"1-1": p11, "2-2": p22}
         else:
             p21 = self.rng.uniform(0.085, 0.105)
-            back = Decimal(str(round(1 / p21 * self.rng.uniform(0.86, 0.93), 2)))
+            back = Decimal(str(round(1 / p21 * self.rng.uniform(0.90, 0.97), 2)))
             buckets = ["2-1", "Any other score"]
             covers = ["2-1"]
-            lays = [("2-1", fx.to_tick(1 / p21 * self.rng.uniform(1.0, 1.035)))]
+            lays = [("2-1", fx.to_tick(1 / p21 * self.rng.uniform(1.0, 1.03)))]
             selection = f"{home} / Both teams to score / Under 3.5 goals"
             probs = {"2-1": p21}
         h = outcomes.hedge(buckets, [{"stake_pence": stake, "odds": str(back), "covers": covers}],
                            [{"odds": str(o), "covers": [b], "commission_bp": com} for b, o in lays])
-        if h["table"]["worst"] < -150:
+        if h["table"]["worst"] < -130:
             return None
         self.used.add((book, f.event, selection))
         self.fund_bookie(book, stake)
@@ -427,7 +430,7 @@ class Demo:
         if o["status"] in ("complete", "expired", "abandoned"):
             return
         for fid in services.receive_reward(self.conn, offer_id):
-            if Clock.t > self.end - timedelta(days=6.7) and self.rng.random() < 0.6:
+            if Clock.t > self.end - timedelta(days=6.7) and self.rng.random() < 0.8:
                 continue                                    # recent free bets still waiting to be used (and expiring)
             self.at(self.awake(self.jitter(Clock.t, 20, 60 * 24 * self.rng.choice([0.3, 0.8, 1.5, 2.5, 4]))),
                     self.use_free_bet, fid, book)
@@ -494,7 +497,7 @@ class Demo:
 
     def plan_week(self, monday: date) -> None:
         for spec in RELOADS:
-            if self.rng.random() >= spec[9]:
+            if self.rng.random() >= spec[9] * RELOAD_RATE:
                 continue
             day = monday + timedelta(days=self.rng.choice(spec[8]))
             post = fx.uk(day - timedelta(days=self.rng.choice([1, 2, 3])), "09:00")
@@ -532,7 +535,10 @@ class Demo:
             if acc["kind"] != "bookmaker" or metrics.unsettled_back_stakes(self.conn, aid):
                 continue
             bal = self.balance(book)
-            if bal >= 4000 or (book in self.restricted and bal >= 500):
+            last = self.conn.execute("SELECT max(at) FROM ledger_entries WHERE account_id = ? AND superseded_at IS NULL "
+                                     "AND category <> 'transfer'", (aid,)).fetchone()[0]
+            idle = last and last < iso(Clock.t - timedelta(days=21))
+            if bal >= 4000 or ((book in self.restricted or idle) and bal >= 500):
                 amount = bal // 100 * 100
                 tid = self.transfer(book, HUB, amount, self.withdrawal_type(amount), in_transit=True)
                 self.at(self.jitter(Clock.t, 60 * 16, 60 * 70), self.arrived, tid)
@@ -579,9 +585,9 @@ class Demo:
 
     # ------------------------------------------------------------------ funding from the second bank
 
-    def loan(self, to: str, amount: int, due_days: int, notes: str, repay_days: float | None, by_hub: bool) -> None:
+    def loan(self, to: str, amount: int, due_days: int | None, notes: str, repay_days: float | None, by_hub: bool) -> None:
         tid = self.transfer(LENDER, to, amount, "temporary_funding", notes=notes,
-                            due_at=iso(Clock.t + timedelta(days=due_days)))
+                            due_at=iso(Clock.t + timedelta(days=due_days)) if due_days else None)
         if repay_days is not None:
             self.at(self.jitter(Clock.t + timedelta(days=repay_days), 0, 300), self.repay, to, amount, by_hub, tid)
 
@@ -753,9 +759,9 @@ class Demo:
         self.at(self.start + timedelta(days=int(len(SIGNUPS) * 3.2) + 230), self.restrict, "BetVictor")
         self.at(self.promo[0], self.promo_on)
         # money borrowed from the second bank
-        self.at(self.start + timedelta(days=150, hours=2), self.loan, "Betfair Exchange", 80000, 14,
+        self.at(self.start + timedelta(days=150, hours=2), self.loan, "Betfair Exchange", 80000, None,
                 "Extra lay liability for a big weekend", 10, False)
-        self.at(self.start + timedelta(days=400, hours=3), self.loan, "Smarkets", 50000, 21,
+        self.at(self.start + timedelta(days=400, hours=3), self.loan, "Smarkets", 50000, None,
                 "Cover for a run of offers", 18, True)
         self.at(self.end - timedelta(days=9, hours=10), self.loan, "Betfair Exchange", 60000, 14,
                 "Lay liability for the weekend", None, False)
@@ -766,6 +772,20 @@ class Demo:
         self.at(self.end - timedelta(hours=31), self.plant_unresolved)
         self.at(self.end - timedelta(hours=8), self.plant_plans)
         self.at(self.end - timedelta(days=3, hours=-7), self.plant_expiring)
+
+
+DEMO_INDEXES = [   # demo database only: the app looks offers' records up by these on every page
+    ("demo_ledger_offer", "ledger_entries (offer_id)"), ("demo_free_bets_offer", "free_bets (offer_id)"),
+    ("demo_free_bets_expected", "free_bets (expected_reward_id)"), ("demo_expected_offer", "expected_rewards (offer_id)"),
+    ("demo_legs_free_bet", "legs (free_bet_id)"), ("demo_plans_offer", "bet_plans (offer_id)"),
+    ("demo_plans_position", "bet_plans (position_id)"),
+]
+
+
+def add_indexes(db: Database) -> None:
+    with db.tx() as conn:
+        for name, on in DEMO_INDEXES:
+            conn.execute(f"CREATE INDEX IF NOT EXISTS {name} ON {on}")
 
 
 def main(argv=None) -> int:
@@ -783,6 +803,7 @@ def main(argv=None) -> int:
     today = args.today or datetime.now(UK).date()
     db = Database(db_path)
     db.migrate()
+    add_indexes(db)
     real_now = times.now
     times.now = _frozen_now
     try:
@@ -796,6 +817,8 @@ def main(argv=None) -> int:
                            "audit_log")}
     finally:
         times.now = real_now
+    with db.read() as conn:
+        conn.execute("ANALYZE")
     print(f"demo seeded for {today}: profit £{s.profit_lifetime / 100:,.2f}, betting balance £{s.betting_balance / 100:,.2f}, "
           + ", ".join(f"{v} {k}" for k, v in n.items()))
     return 0

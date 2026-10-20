@@ -18,12 +18,17 @@ what the app itself would have written, and every page balances.
 - Real Premier League, Championship and Champions League clubs, World Cup teams and tennis players, and real
   racecourses and race names, on the days and times those fixtures are normally played. The horses' names are made
   up. Prices come from each selection's chance of winning, so back and lay odds sit close together the way an
-  oddsmatcher finds them. Qualifying losses are mostly 5p to £1 and free bets keep around 78%.
+  oddsmatcher finds them. Qualifying losses are mostly 5p to £1 (Bet Builders about £1.10), and free bets keep
+  around 78%.
 - Deposits from the hub bank, withdrawals that take a day or two to arrive, profit taken out as profit withdrawals,
   money borrowed from a second bank for busy weeks (one loan still outstanding and due soon), fortnightly balance
   checks, and a bookmaker that restricted the account.
 - Left for you to find: a few open positions and plans, free bets that expire soon, last night's bet that nobody
   settled, a reward that hasn't arrived, a withdrawal that's late, and a balance check that's 50p out.
+
+About 575 offers and 1,150 positions, and a little under £3,000 profit. The demo database also gets a few
+indexes of its own (`demo_*`): the app checks every offer on each page, which is quick for a personal ledger but
+slow on a Pi with 18 months of reloads.
 
 It's deterministic: the same `--today` always gives the same records. Fixtures are fixed per date, and dates are
 worked out back from today, so a nightly rebuild keeps the demo current.
