@@ -475,10 +475,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return positions
 
     def up_next(conn, s, now: str, soon: str, free_bets: list[dict]) -> list[dict]:
-        """One chronological list: what needs the user now, then open bets and deadlines by day (UK time).
-        Free bets of one bookmaker expiring at the same moment are one item, not one per token."""
+        """One chronological list: what needs the user now, what is waiting on someone else, then open bets and
+        deadlines by day (UK time). Free bets of one bookmaker expiring at the same moment are one item, not one per
+        token. An offer's deadline only shows while it still needs the user (offer_state.deadline_matters)."""
         today = times.now().astimezone(times.UK).date()
-        needs, dated = [], []
+        needs, waiting, dated = [], [], []
 
         def group_of(at: str | None) -> tuple:
             if not at:
@@ -545,7 +546,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                                f"&amount={plain(d['remaining'])}&type=temporary_return#move", d["due_at"] <= soon)}
             (needs if d["due_at"] <= soon else dated).append(item)
         for t in outlook.in_transit(conn):
-            needs.append({"at": "", "kind": "On its way", "cls": "k-ink", "when": times.local(t["at"], "%a"),
+            waiting.append({"at": t["at"], "kind": "On its way", "cls": "k-ink", "when": times.local(t["at"], "%a"),
                           "title": f"{fmt(t['amount_pence'])} from {t['from_name']} to {t['to_name']}",
                           "text": f"Withdrawal sent {times.relative(t['at'])} · tap when it reaches your bank",
                           "arrived": t["id"]})
@@ -561,10 +562,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                                      f"&amount={plain(cash[0]['balance'])}#move", False)})
         for o in conn.execute("SELECT o.*, a.name AS account FROM offers o LEFT JOIN accounts a ON a.id = o.account_id "
                               "WHERE o.deleted_at IS NULL AND o.status = 'awaiting_reward' AND o.reward_credited = 0"):
-            needs.append({"at": "", "kind": "Reward", "cls": "k-blue", "when": "due", "title": o["title"],
-                          "text": f"{o['account'] or 'Bookmaker'} · {o['reward'] or 'reward'} · qualifier settled, has it arrived?",
-                          "reward_offer": o["id"] if o["reward_each_pence"] and o["reward_kind"] and o["account_id"] else None,
-                          "action": ("Open offer", f"/offers/{o['id']}", False)})
+            life = offer_state.derive(conn, dict(o))
+            late = life["stage"] == "reward_overdue"
+            due = life.get("deadline")
+            item = {"at": due or "", "kind": "Reward", "title": o["title"],
+                    "reward_offer": o["id"] if o["reward_each_pence"] and o["reward_kind"] and o["account_id"] else None,
+                    "action": ("Open offer", f"/offers/{o['id']}", late)}
+            if late:                                # overdue: chasing the bookmaker is a job for the user
+                needs.append(item | {"cls": "k-red", "when": "late", "text": f"{o['account'] or 'Bookmaker'} · "
+                                     f"{o['reward'] or 'reward'} · overdue{' since ' + times.local(due) if due else ''}, "
+                                     "check the bookmaker and chase it"})
+            else:                                   # qualified, reward on its way: nothing to do until it arrives
+                waiting.append(item | {"cls": "k-blue", "when": times.local(due, "%a %H:%M") if due else "due",
+                                       "text": f"{o['account'] or 'Bookmaker'} · {o['reward'] or 'reward'} · qualified, "
+                                       + (f"expected by {times.local(due)}" if due else "reward on its way")})
         for p in comm.promos(conn):                 # promotional commission rates ending (30 days, 7 days, ended)
             if p["level"] == "later":
                 continue
@@ -587,6 +598,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                           "action": ("See issues", "/issues", fix)})
         needs.sort(key=lambda i: (i["at"] == "", i["at"]))
         groups = [{"label": "Needs you", "date": "", "items": needs}]
+        if waiting:
+            groups.append({"label": "Waiting", "date": "", "items": sorted(waiting, key=lambda i: (i["at"] == "", i["at"]))})
         by_group: dict = {}
         for item in sorted(dated, key=lambda i: (i["at"] == "", i["at"])):
             by_group.setdefault(group_of(item["at"]), []).append(item)

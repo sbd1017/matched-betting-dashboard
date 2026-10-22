@@ -6,7 +6,7 @@ import io
 import json
 import uuid
 
-from . import services, times
+from . import offer_state, services, times
 from .money import fmt, plain
 
 LEDGER_COLUMNS = ["id", "at", "account", "account_kind", "category", "class", "amount", "description", "position_id",
@@ -132,9 +132,11 @@ def deadline_events(conn, kind: str | None = None, item_id: int | None = None) -
             sql += " AND o.id = ?"
             params.append(item_id)
         else:
-            sql += " AND o.status NOT IN ('complete', 'expired', 'abandoned') AND o.expires_at >= ?"
+            sql += " AND o.status IN ('not_started', 'qualifying') AND o.expires_at >= ?"
             params.append(now)
         for o in conn.execute(sql, params):
+            if not item_id and not offer_state.deadline_matters(conn, dict(o)):
+                continue                         # qualifier placed or reward in: the deadline no longer needs you
             events.append({"uid": f"offer-{o['id']}", "at": o["expires_at"],
                            "title": f"Offer deadline: {o['title']}", "description": o["account"] or ""})
     if kind in (None, "return"):

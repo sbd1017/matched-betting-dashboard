@@ -30,6 +30,15 @@ DEFAULT_DELAY_HOURS = 24
 TRIGGER_TEXT = {"bet_placed": "the qualifying bet was placed", "bet_fully_matched": "the qualifier was placed and hedged",
                 "bet_settled": "the qualifier settled", "bet_lost": "the qualifier lost",
                 "other": "the bookmaker confirmed it"}
+# The stages where the offer's own deadline is still something the user has to beat: opt in, deposit, plan or place
+# the qualifier. Once the qualifier is placed the deadline has done its job; a credited reward is tracked by its free
+# bets' own expiry, and a reward that is due is waiting on the bookmaker, not on a deadline.
+DEADLINE_STAGES = ("discovered", "reviewed", "deposit_required", "qualifier_required", "qualifier_planned")
+
+
+def deadline_matters(conn, offer: dict) -> bool:
+    """True while the offer's deadline (expires_at) still needs the user to do something before it."""
+    return bool(offer["expires_at"]) and derive(conn, offer)["stage"] in DEADLINE_STAGES
 
 
 def trigger(offer: dict) -> str:
