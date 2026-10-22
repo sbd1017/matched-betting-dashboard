@@ -2,7 +2,7 @@
 import json
 import logging
 import time
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 import httpx2
 import pytest
@@ -583,6 +583,91 @@ def test_cimd_documents_are_cached():
     assert first is second and fake.fetched == [CB_CIMD_URL]
 
 
+# ---------------------------------------------------------------- issuer identification (RFC 9207)
+
+ISSUER = f"{SITE}/bets/mcp"
+STABLE_REDIRECT = "https://chatgpt.com/connector_platform_oauth_redirect"
+
+
+def authorize_raw(nginx, client_id=STABLE_CIMD_URL, redirect_uri=STABLE_REDIRECT, **override):
+    _, challenge = pkce()
+    params = {"response_type": "code", "client_id": client_id, "redirect_uri": redirect_uri, "state": "s9",
+              "code_challenge": challenge, "code_challenge_method": "S256", "scope": "bets.intake",
+              "resource": ISSUER, **override}
+    return nginx.client().get("/bets/mcp/authorize", params={k: v for k, v in params.items() if v is not None})
+
+
+def redirect_of(r):
+    assert r.status_code == 302, r.text[:300]
+    loc = urlsplit(r.headers["location"])
+    return f"{loc.scheme}://{loc.netloc}{loc.path}", parse_qs(loc.query)
+
+
+@pytest.mark.parametrize("override,error", [
+    ({"scope": "everything"}, "invalid_scope"),
+    ({"resource": "https://evil.example/mcp"}, "invalid_target"),
+    ({"code_challenge": None}, "invalid_request"),                 # a PKCE challenge is required
+    ({"code_challenge_method": "plain"}, "invalid_request")])       # and only S256
+def test_every_authorization_error_redirect_carries_iss(nginx, override, error):
+    target, q = redirect_of(authorize_raw(nginx, **override))
+    assert target == STABLE_REDIRECT
+    assert q["error"] == [error] and q["state"] == ["s9"] and q["iss"] == [ISSUER] and "code" not in q
+
+
+def test_access_off_and_consent_denied_carry_iss(nginx, mcp):
+    mcp.store.set_enabled(False)
+    try:
+        target, q = redirect_of(authorize_raw(nginx))
+        assert target == STABLE_REDIRECT and q["error"] == ["access_denied"] and q["iss"] == [ISSUER]
+    finally:
+        mcp.store.set_enabled(True)
+    target, q = redirect_of(authorize_raw(nginx))                  # to our consent page: no iss there
+    assert target == f"{ISSUER}/consent" and "iss" not in q
+    c = nginx.client()
+    denied = c.post("/bets/mcp/consent", data={"request": q["request"][0], "decision": "deny"})
+    target, q = redirect_of(denied)
+    assert target == STABLE_REDIRECT and q["error"] == ["access_denied"] and q["state"] == ["s9"] and q["iss"] == [ISSUER]
+
+
+def test_issuer_is_identical_everywhere(nginx, mcp):
+    c = nginx.client()
+    prm = c.get("/.well-known/oauth-protected-resource/bets/mcp").json()
+    asm = c.get("/.well-known/oauth-authorization-server/bets/mcp").json()
+    _, q = redirect_of(authorize_raw(nginx, scope="everything"))
+    assert prm["authorization_servers"] == [asm["issuer"]] == q["iss"] == [ISSUER]   # exact strings, no normalising
+
+
+def test_with_iss_never_sends_a_different_issuer():
+    from bets_mcp.config import load_settings
+    from bets_mcp.server import with_iss
+    s = load_settings()
+    assert with_iss(f"{s.issuer}/consent?request=abc", s) == f"{s.issuer}/consent?request=abc"
+    assert with_iss(STABLE_REDIRECT + "?x=1&state=a", s) == STABLE_REDIRECT + "?x=1&state=a&iss=" + quote(s.issuer, safe="")
+    assert with_iss(STABLE_REDIRECT + "?iss=" + quote(s.issuer, safe=""), s).count("iss=") == 1
+    with pytest.raises(RuntimeError):
+        with_iss(STABLE_REDIRECT + "?iss=https%3A%2F%2Fevil.example", s)
+
+
+def test_unknown_or_unreachable_clients_are_refused_without_a_redirect(nginx):
+    for client_id in ("abc123", "https://chatgpt.com/oauth/gone_cb/client.json"):   # not registered / document 404s
+        r = authorize_raw(nginx, client_id=client_id, redirect_uri="https://chatgpt.com/connector/oauth/gone_cb")
+        assert r.status_code == 400 and "location" not in r.headers
+        assert r.json()["error"] == "invalid_request"
+
+
+def test_repeat_authorization_uses_the_cached_document(nginx):
+    url, cb = "https://chatgpt.com/oauth/cb_repeat/client.json", "https://chatgpt.com/connector/oauth/cb_repeat"
+    FAKE_CIMD.docs[url] = {**CB_CIMD, "client_id": url, "redirect_uris": [cb]}
+    FAKE_CIMD.fetched.clear()
+    try:
+        for _ in range(3):
+            target, _ = redirect_of(authorize_raw(nginx, client_id=url, redirect_uri=cb))
+            assert target == f"{ISSUER}/consent"
+        assert FAKE_CIMD.fetched == [url]                          # fetched and validated once, then cached
+    finally:
+        del FAKE_CIMD.docs[url]
+
+
 def test_revoke_and_disable(nginx, mcp):
     _, _, tok = connect(nginx, mcp)
     access = tok.json()["access_token"]
@@ -648,7 +733,7 @@ def test_metadata_meets_chatgpt_requirements(nginx):
     assert asm["token_endpoint_auth_methods_supported"] == ["none"]                         # public client + PKCE
     assert asm["scopes_supported"] == ["bets.intake"] and prm["scopes_supported"] == ["bets.intake"]
     assert {"authorization_code", "refresh_token"} <= set(asm["grant_types_supported"]) and asm["response_types_supported"] == ["code"]
-    assert not asm.get("authorization_response_iss_parameter_supported")                  # not claimed (see server.py)
+    assert asm["authorization_response_iss_parameter_supported"] is True                  # RFC 9207 (see server.py)
     assert c.get("/bets/mcp/.well-known/oauth-authorization-server").json() == asm        # issuer-relative copy agrees
 
 

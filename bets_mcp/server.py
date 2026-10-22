@@ -8,6 +8,7 @@ import hashlib
 import json
 import logging
 from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import uvicorn
 from mcp.server.auth.routes import build_metadata, cors_middleware
@@ -106,6 +107,7 @@ def build(settings: Settings | None = None, *, upstream: Upstream | None = None,
             enable_dns_rebinding_protection=True, allowed_hosts=settings.allowed_hosts,
             allowed_origins=[settings.public_origin, "https://chatgpt.com", "https://chat.openai.com"]))
     _metadata_route(app, server, settings)
+    _authorize_iss(app, settings)
     open_mcp_route(app, settings.mcp_path)            # tokens are still verified; each protected tool checks them
     wrapped = SecurityHeaders(ToolSecuritySchemes(app, settings.mcp_path, schemes))
     wrapped.starlette = app                           # its lifespan runs the MCP session manager
@@ -114,8 +116,10 @@ def build(settings: Settings | None = None, *, upstream: Upstream | None = None,
 
 # ChatGPT is a public OAuth client (PKCE, no client secret). With CIMD its client_id is the URL of its own
 # metadata document, so there is no registration endpoint and the only token method is "none". Issuer
-# identification (authorization_response_iss_parameter_supported) is not advertised: the SDK's authorization
-# error redirects carry no `iss`, so ChatGPT uses its per-connector callback and CIMD document, both allowed.
+# identification (RFC 9207) is advertised: every authorization response that goes back to the client carries
+# `iss` equal to the metadata issuer -- the SDK's error redirects get it from _authorize_iss, the consent page's
+# approve/deny redirects add it themselves. ChatGPT then uses its stable CIMD document
+# (https://chatgpt.com/oauth/client.json) and redirect URI; the per-connector ones stay allowed.
 def authorization_server_metadata(server, settings: Settings) -> dict:
     auth = server.settings.auth
     metadata = build_metadata(auth.issuer_url, auth.service_documentation_url, auth.client_registration_options,
@@ -124,7 +128,44 @@ def authorization_server_metadata(server, settings: Settings) -> dict:
     metadata["revocation_endpoint_auth_methods_supported"] = list(settings.token_auth_methods)
     if settings.cimd:
         metadata["client_id_metadata_document_supported"] = True
+    metadata["authorization_response_iss_parameter_supported"] = True
     return metadata
+
+
+def with_iss(location: str, settings: Settings) -> str:
+    """RFC 9207: add iss to a redirect back to the client (never to our own consent page). An iss already there
+    must be ours: anything else is a bug, so it fails loudly instead of sending a mismatched issuer."""
+    parts = urlsplit(location)
+    if f"{parts.scheme}://{parts.netloc}{parts.path}" == f"{settings.issuer}/consent":
+        return location
+    query = parse_qsl(parts.query, keep_blank_values=True)
+    issuers = [v for k, v in query if k == "iss"]
+    if issuers:
+        if issuers != [settings.issuer]:
+            raise RuntimeError("authorization response carries a different iss")
+        return location
+    return urlunsplit(parts._replace(query=urlencode([*query, ("iss", settings.issuer)])))
+
+
+def _authorize_iss(app, settings: Settings) -> None:
+    """Wrap the SDK's /authorize so its redirects (errors such as invalid_scope, access_denied, invalid_target or
+    a missing PKCE challenge, once client and redirect URI are known) carry iss like ours do."""
+    for route in app.router.routes:
+        if getattr(route, "path", None) == "/authorize":
+            inner = route.app
+
+            async def wrapped(scope, receive, send):
+                async def send_iss(message):
+                    if message["type"] == "http.response.start" and 300 <= message["status"] < 400:
+                        headers = [(k, with_iss(v.decode("latin-1"), settings).encode("latin-1"))
+                                   if k.lower() == b"location" else (k, v) for k, v in message.get("headers", [])]
+                        message = {**message, "headers": headers}
+                    await send(message)
+                await inner(scope, receive, send_iss)
+
+            route.app = wrapped
+            return
+    raise RuntimeError("authorization route not found")
 
 
 def _metadata_route(app, server, settings: Settings) -> None:

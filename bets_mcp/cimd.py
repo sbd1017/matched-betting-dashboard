@@ -1,8 +1,8 @@
 """Client ID Metadata Documents (CIMD): ChatGPT's client_id is a URL to its own client metadata.
 
 Only ChatGPT's documents are ever fetched (never an arbitrary URL from a request, so no SSRF):
-    https://chatgpt.com/oauth/client.json                  (when issuer identification is supported)
-    https://chatgpt.com/oauth/<callback_id>/client.json    (otherwise)
+    https://chatgpt.com/oauth/client.json                  (issuer identification is advertised: new connections)
+    https://chatgpt.com/oauth/<callback_id>/client.json    (connections made before that; still accepted)
 The fetch is HTTPS only, follows no redirects, is size- and time-limited, and is cached (Cache-Control
 max-age, 1 minute to 1 hour). A document is accepted only if:
   * its client_id equals the URL it was fetched from, exactly;

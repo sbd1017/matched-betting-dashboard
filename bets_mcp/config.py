@@ -8,8 +8,8 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-# OpenAI's OAuth callbacks (https://developers.openai.com/apps-sdk/build/auth): ChatGPT's stable URI,
-# its per-connector callback (used when the server does not advertise issuer identification), and the
+# OpenAI's OAuth callbacks (https://developers.openai.com/plugins/build/auth): ChatGPT's stable URI (used
+# now that issuer identification is advertised), its per-connector callback (connections made before), and the
 # OpenAI app review tool's callback, which ChatGPT includes in the same registration request.
 # Nothing else may receive an authorization code.
 CHATGPT_REDIRECTS = (re.compile(r"^https://chatgpt\.com/connector_platform_oauth_redirect$"),
