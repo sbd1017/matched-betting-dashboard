@@ -774,20 +774,6 @@ class Demo:
         self.at(self.end - timedelta(days=3, hours=-7), self.plant_expiring)
 
 
-DEMO_INDEXES = [   # demo database only: the app looks offers' records up by these on every page
-    ("demo_ledger_offer", "ledger_entries (offer_id)"), ("demo_free_bets_offer", "free_bets (offer_id)"),
-    ("demo_free_bets_expected", "free_bets (expected_reward_id)"), ("demo_expected_offer", "expected_rewards (offer_id)"),
-    ("demo_legs_free_bet", "legs (free_bet_id)"), ("demo_plans_offer", "bet_plans (offer_id)"),
-    ("demo_plans_position", "bet_plans (position_id)"),
-]
-
-
-def add_indexes(db: Database) -> None:
-    with db.tx() as conn:
-        for name, on in DEMO_INDEXES:
-            conn.execute(f"CREATE INDEX IF NOT EXISTS {name} ON {on}")
-
-
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--data-dir", required=True, type=Path)
@@ -803,7 +789,6 @@ def main(argv=None) -> int:
     today = args.today or datetime.now(UK).date()
     db = Database(db_path)
     db.migrate()
-    add_indexes(db)
     real_now = times.now
     times.now = _frozen_now
     try:

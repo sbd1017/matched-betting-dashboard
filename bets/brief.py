@@ -348,8 +348,9 @@ def next_actions(conn, s=None) -> list[dict]:
         dest = conn.execute("SELECT t.to_account_id FROM transfers t WHERE t.from_account_id = ? AND t.capital_type = "
                             "'temporary_funding' AND t.voided_at IS NULL ORDER BY t.at DESC LIMIT 1", (b["id"],)).fetchone()
         free_cash = services.expected_balance(conn, dest[0], "available")["available"] if dest else 0
-        due = conn.execute("SELECT min(due_at) FROM transfers WHERE from_account_id = ? AND capital_type = 'temporary_funding' "
-                           "AND voided_at IS NULL AND due_at IS NOT NULL", (b["id"],)).fetchone()[0]
+        # only funding still outstanding (repaid oldest first): a loan repaid long ago is not due back
+        due = min((f["due_at"] for f in services.funding_ledger(conn, b["id"])["fundings"].values()
+                   if f["outstanding"] > 0 and f["due_at"]), default=None)
         if released and free_cash > 0:
             amount = min(outstanding, free_cash)
             out.append(_action("medium", "return_funding", f"{fmt(amount)} temporary {b['name']} funding can be returned",

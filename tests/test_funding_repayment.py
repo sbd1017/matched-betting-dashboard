@@ -210,3 +210,23 @@ def test_web_form_records_a_repayment(app, banks, browser):
     assert r.status_code == 303 and "ok=" in r.headers["location"]
     with app.state.db.read() as conn:
         assert owed(conn, banks) == 0
+
+
+def test_a_repaid_loans_return_date_is_not_shown_as_due(app, banks):
+    """Only funding still outstanding (repaid oldest first) has a return date that matters."""
+    with app.state.db.tx() as conn:
+        old = services.create_transfer(conn, from_id=banks["lloyds"], to_id=banks["smarkets"], amount=10000, at=at(-100),
+                                       capital_type="temporary_funding", due_at=at(-50))
+        services.record_funding_repayment(conn, from_id=banks["fd"], lender_id=banks["lloyds"], amount=10000, at=at(-60))
+        new = services.create_transfer(conn, from_id=banks["lloyds"], to_id=banks["smarkets"], amount=5000, at=at(-10),
+                                       capital_type="temporary_funding", due_at=at(240))
+        services.create_transfer(conn, from_id=banks["smarkets"], to_id=banks["fd"], amount=25000,
+                                 capital_type="bankroll_withdrawal", at=at(-5))       # no free cash left to return
+        assert owed(conn, banks) == 5000
+        assert not [a for a in brief.next_actions(conn) if a["kind"] == "return_funding"]   # due in 10 days
+        services.set_transfer_due(conn, new, at(48))
+        due = [a for a in brief.next_actions(conn) if a["kind"] == "return_funding"]
+        stored = {r["id"]: r["due_at"] for r in conn.execute("SELECT id, due_at FROM transfers WHERE id IN (?, ?)",
+                                                              (old, new))}
+        assert [(a["priority"], a["deadline_label"]) for a in due] == [("high", times.local(stored[new], "%a %d %b %H:%M"))]
+        assert due[0]["title"].startswith(f"{services.fmt(5000)} due back to Lloyds")

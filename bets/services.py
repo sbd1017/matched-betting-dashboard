@@ -259,7 +259,8 @@ def funding_ledger(conn, lender_id: int) -> dict:
                           f"'temporary_funding') OR (to_account_id = :b AND {REPAID_SQL})) ORDER BY at, id",
                           {"b": lender_id}).fetchall():
         if t["capital_type"] == "temporary_funding":
-            f = {"transfer_id": t["id"], "amount": t["amount_pence"], "repaid": 0, "repaid_by": [], "at": t["at"]}
+            f = {"transfer_id": t["id"], "amount": t["amount_pence"], "repaid": 0, "repaid_by": [], "at": t["at"],
+                 "due_at": t["due_at"]}
             fundings[t["id"]] = f
             queue.append(f)
             outstanding += t["amount_pence"]

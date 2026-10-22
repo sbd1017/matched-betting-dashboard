@@ -78,7 +78,9 @@ The app and nginx send `default-src 'self'; script-src 'self'; style-src 'self'`
   Pages: /operations, /plans, /plans/<id>, /settings/retention-policy, evidence on plan and position pages.
 - Offer lifecycle (migration 0015): `bets/offer_state.py` is the ONLY place offer status/stage/next action are worked
   out (`derive`) and written (`sync`, called by every service that can move an offer on, by `ops.execute` and the
-  dashboard). Never write `offers.status` elsewhere; people set only complete / expired / abandoned. Reward trigger:
+  dashboard; `sync_all` / `out_of_step` skip the closed offers `settled_ids` rules out, so a new fact `derive` or
+  `sync` reads goes there too). Never write `offers.status` elsewhere; people set only complete / expired /
+  abandoned. Reward trigger:
   `offers.reward_trigger`; bookmaker confirmation: `offers.qualified_at`. Hedging: `positions.hedge_strategy`
   (`services.set_hedge_strategy`, `hedge_state`); deliberately unhedged qualifiers are not "incomplete".
   `times.from_local_input(..., happened=True)` for times that already happened.

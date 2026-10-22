@@ -221,9 +221,45 @@ def mark_qualified(conn, offer_id: int, at: str | None = None, note: str = "") -
     return sync(conn, offer_id)
 
 
+def _tokens_where(cond: str) -> str:
+    """SQL: the offer `o` has a token (as derive counts them: its own free bets or its expected rewards') matching cond."""
+    live = "f.deleted_at IS NULL AND f.status <> 'void'"
+    return (f"(EXISTS (SELECT 1 FROM free_bets f WHERE f.offer_id = o.id AND {live} AND {cond}) OR EXISTS (SELECT 1 FROM "
+            f"free_bets f JOIN expected_rewards x ON x.id = f.expected_reward_id WHERE x.offer_id = o.id AND {live} AND {cond}))")
+
+
+# A closed offer whose stored status its records cannot move: closed by hand (derive answers from the row alone), or
+# complete with no free bet left to use or still running. Every page checks every offer, and most offers are closed,
+# so these skip the per-offer derive; anything this cannot rule out is derived in full as before. A change to what
+# derive or sync reads must change these too (tests/test_offer_sync_skip.py compares them with the full run).
+_SETTLED = ("o.deleted_at IS NULL AND (o.status IN ('expired', 'abandoned') OR (o.status = 'complete' AND NOT "
+            + _tokens_where("(f.status = 'available' OR EXISTS (SELECT 1 FROM legs l JOIN positions p ON p.id = "
+                            "l.position_id WHERE l.free_bet_id = f.id AND l.deleted_at IS NULL AND l.result <> 'void' "
+                            "AND p.status = 'open'))") + "))")
+# ... and for which sync has nothing to write either: no reward still to expect (free bets arrived for a free-bet
+# offer with no expected reward), no expected free-bet reward still waiting (spare free bets to link) and no
+# reward_credited / reward_used flag to set.
+_QUIET = (_SETTLED + " AND NOT EXISTS (SELECT 1 FROM expected_rewards e WHERE e.offer_id = o.id AND e.status IN "
+          "('waiting', 'partially_received') AND e.kind <> 'cash') AND NOT (o.status = 'complete' AND "
+          "coalesce(o.reward_kind, '') NOT IN ('', 'cash') AND coalesce(o.reward_each_pence, 0) <> 0 AND EXISTS (SELECT "
+          "1 FROM free_bets f WHERE f.offer_id = o.id AND f.deleted_at IS NULL AND f.status <> 'void') AND NOT EXISTS "
+          "(SELECT 1 FROM expected_rewards e WHERE e.offer_id = o.id AND e.status <> 'void')) AND NOT (o.status = "
+          "'complete' AND (o.reward_credited IS NOT 1 OR o.reward_used IS NOT 1) AND (" + _tokens_where("1") +
+          " OR EXISTS (SELECT 1 FROM ledger_entries c WHERE c.offer_id = o.id AND c.superseded_at IS NULL AND "
+          "c.category = 'promotion_reward')))")
+
+
+def settled_ids(conn, *, quiet: bool = False) -> set[int]:
+    """Offers out_of_step (or, with quiet, sync) can skip: their result is known without deriving them."""
+    return {r[0] for r in conn.execute(f"SELECT o.id FROM offers o WHERE {_QUIET if quiet else _SETTLED}")}
+
+
 def sync_all(conn) -> int:
     n = 0
+    quiet = settled_ids(conn, quiet=True)      # syncing one offer never changes another's records
     for (oid,) in conn.execute("SELECT id FROM offers WHERE deleted_at IS NULL").fetchall():
+        if oid in quiet:
+            continue
         before = conn.execute("SELECT status FROM offers WHERE id = ?", (oid,)).fetchone()[0]
         state = sync(conn, oid)
         n += bool(state and state["status"] != before)
@@ -233,7 +269,10 @@ def sync_all(conn) -> int:
 def out_of_step(conn) -> list[dict]:
     """Offers whose stored status disagrees with their records (an integrity check; sync fixes it)."""
     bad = []
+    settled = settled_ids(conn)
     for o in conn.execute("SELECT * FROM offers WHERE deleted_at IS NULL").fetchall():
+        if o["id"] in settled:
+            continue
         st = derive(conn, dict(o))
         if st["status"] != o["status"]:
             bad.append({"offer_id": o["id"], "title": o["title"], "stored": o["status"], "derived": st["status"],

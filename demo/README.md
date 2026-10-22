@@ -26,9 +26,7 @@ what the app itself would have written, and every page balances.
 - Left for you to find: a few open positions and plans, free bets that expire soon, last night's bet that nobody
   settled, a reward that hasn't arrived, a withdrawal that's late, and a balance check that's 50p out.
 
-About 575 offers and 1,150 positions, and a little under £3,000 profit. The demo database also gets a few
-indexes of its own (`demo_*`): the app checks every offer on each page, which is quick for a personal ledger but
-slow on a Pi with 18 months of reloads.
+About 575 offers and 1,150 positions, and a little under £3,000 profit.
 
 It's deterministic: the same `--today` always gives the same records. Fixtures are fixed per date, and dates are
 worked out back from today, so a nightly rebuild keeps the demo current.
