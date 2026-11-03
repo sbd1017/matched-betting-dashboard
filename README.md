@@ -30,11 +30,16 @@ or exchange and it never moves money.
   never show up as profit.
 - Splits exchange balances into available cash, money held for open lays, and the total.
 - Follows each offer from sign up to the reward arriving and being used, and warns you before free bets
-  expire.
-- Tracks money borrowed from your bank account and tells you when it's safe to send it back.
+  expire. An offer's deadline only shows while there's still something for you to do before it.
+- An Up next list on the dashboard, split into what needs you now and what's just waiting (a bet to settle,
+  a reward to arrive).
+- Tracks money borrowed from your bank account, shows how much is still owed and tells you when it's safe to
+  send it back. Repayments are recorded as a bank to bank transfer, so they never touch your profit.
 - An Operations page that lists what needs doing next, and an Issues page that spots records that don't
-  add up and suggests a fix.
-- Profit page, calendar, search, CSV, JSON and calendar exports, dark mode, and it works fine on a phone.
+  add up and offers a fix you can preview first. For example, if a bookmaker sends 3 x £10 free bets when
+  you'd expected 1 x £30, it can correct the expected reward without touching the free bets themselves.
+- Profit page, calendar, search, CSV, JSON and calendar exports, and it works fine on a phone. It's dark by
+  default, with a light theme if you prefer.
 - Works in pounds by default, but you can switch to euros, dollars and a few others in Settings.
 - Optional ChatGPT connection through an MCP server with OAuth. ChatGPT can read your records and log bets
   from your screenshots, but anything risky waits for you to confirm it.
@@ -121,8 +126,9 @@ To hear about new versions, watch the repo on GitHub (Watch, then Custom, then R
 
 There's one login, with the password hashed using scrypt. Sessions are signed, every form has a CSRF token,
 the Content Security Policy is strict and failed logins are rate limited. The data folder is only readable by
-the app's own user and is never served. ChatGPT gets its own token, everything it sends is checked on the
-server and logged, and you can make deletions and money corrections wait for your approval.
+the app's own user and is never served. ChatGPT signs in with OAuth and PKCE, and approving it needs a
+one-off connection code made on your server. It gets its own token, everything it sends is checked
+on the server and logged, and you can make deletions and money corrections wait for your approval.
 
 ## Disclaimer
 
