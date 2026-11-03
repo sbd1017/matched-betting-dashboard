@@ -14,3 +14,27 @@ secret.key
 /mcp-var/
 .venv-mcp/
 /mcp-lab-var/
+
+# Never commit secrets, data, logs or keys (security audit, Oct 2026). Tracked files stay tracked.
+.env
+.env.*
+!.env.example
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*
+*.log
+*.bak
+*.bak-*
+*.orig
+*.swp
+*.pem
+*.key
+*.p12
+id_rsa*
+id_ed25519*
+.DS_Store
