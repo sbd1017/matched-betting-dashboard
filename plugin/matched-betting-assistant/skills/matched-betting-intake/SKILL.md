@@ -48,7 +48,9 @@ same reminder is not repeated; an alert comes back by itself if it escalates.
    cash out and other unusual results go in `unusual` and wait for the user.
 6. *Rewards*: qualifying bets with reward terms create an expected reward when they settle (`expect_reward` for
    others). When free bets arrive: `reconcile_rewards` (links unambiguous matches only) or `mark_reward_received`
-   (creates only the missing tokens). Expected rewards are never profit.
+   (creates only the missing tokens). Expected rewards are never profit. If an expected reward holds the wrong
+   shape (e.g. the offer was corrected from 1 x £30 to 3 x £10 after it was expected), correct it with
+   `update_expected_reward`; never relink, delete or recreate free bets to make it match.
 7. *Funding back*: when next actions say temporary funding "can be returned", tell the user; record the return
    only after they say they did it. Never suggest moving money that is still holding liability.
 

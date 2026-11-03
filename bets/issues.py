@@ -19,7 +19,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from . import calc, commission, metrics, services, times
-from .money import fmt
+from .money import fmt, plain
 
 SEVERITY_ORDER = {"fix": 0, "act": 1, "info": 2}
 SEVERITY_LABELS = {"fix": "Fix", "act": "To do", "info": "Worth a look"}
@@ -317,13 +317,41 @@ def _reward_checks(conn, out: list, now: str) -> None:
                           f"/offers/{r['offer_id']}" if r["offer_id"] else "/free-bets", "Check",
                           records=[f"expected_reward #{r['id']}"],
                           repairs=[_repair("reconcile_rewards", "match free bets that arrived", expected_reward_id=r["id"])]))
-    for r in conn.execute("SELECT e.id, e.count, e.each_pence, count(f.id) AS n, sum(f.face_value_pence <> e.each_pence) AS wrong "
-                          "FROM expected_rewards e JOIN free_bets f ON f.expected_reward_id = e.id AND f.deleted_at IS NULL "
-                          "AND f.status <> 'void' GROUP BY e.id HAVING n > e.count OR wrong > 0"):
+    for r in conn.execute("SELECT e.id, e.count, e.each_pence, e.kind, count(f.id) AS n, sum(f.face_value_pence <> "
+                          "e.each_pence) AS wrong, min(f.face_value_pence) AS lo, max(f.face_value_pence) AS hi, "
+                          "count(DISTINCT f.kind) AS kinds, min(f.kind) AS fkind, o.reward_count, o.reward_each_pence, "
+                          "o.reward_kind FROM expected_rewards e JOIN free_bets f ON f.expected_reward_id = e.id AND "
+                          "f.deleted_at IS NULL AND f.status <> 'void' LEFT JOIN offers o ON o.id = e.offer_id "
+                          "GROUP BY e.id HAVING n > e.count OR wrong > 0"):
+        # the offer's (corrected) terms describe exactly the free bets that arrived: offer to correct the snapshot
+        terms = (r["reward_count"] or 1, r["reward_each_pence"], r["reward_kind"])
+        fits = (r["reward_each_pence"] and r["kinds"] == 1 and r["lo"] == r["hi"] == r["reward_each_pence"]
+                and r["fkind"] == r["reward_kind"] and r["n"] == terms[0])
         out.append(_issue(f"reward:mismatch:{r['id']}", "fix", "Reward", f"Expected reward #{r['id']}",
                           f"{r['n']} free bet(s) linked where {r['count']} x {fmt(r['each_pence'])} was expected"
-                          + (" (some of a different value)" if r["wrong"] else " (a duplicate?)") + ".",
-                          "/free-bets?show=all", "Open", records=[f"expected_reward #{r['id']}"]))
+                          + ((f": the offer now says {terms[0]} x {fmt(terms[1])} {terms[2].upper()}, so the expected "
+                              "reward still holds the old terms") if fits else
+                             (" (some of a different value)" if r["wrong"] else " (a duplicate?)")) + ".",
+                          "/free-bets?show=all", "Open", records=[f"expected_reward #{r['id']}"],
+                          repairs=[_repair("update_expected_reward", f"correct it to the offer's terms ({terms[0]} x "
+                                           f"{fmt(terms[1])} {terms[2].upper()})", expected_reward_id=r["id"],
+                                           count=terms[0], each=plain(terms[1]), reward_type=terms[2])] if fits else []))
+    # still waiting, but the offer's terms were corrected since it was expected: arriving free bets would not match
+    for r in conn.execute("SELECT e.id, e.count, e.each_pence, e.kind, o.id AS offer_id, o.title, o.reward_count, "
+                          "o.reward_each_pence, o.reward_kind FROM expected_rewards e JOIN offers o ON o.id = e.offer_id "
+                          "WHERE e.status = 'waiting' AND o.deleted_at IS NULL AND o.reward_each_pence > 0 AND "
+                          "o.reward_kind IS NOT NULL AND NOT EXISTS (SELECT 1 FROM free_bets f WHERE f.expected_reward_id "
+                          "= e.id AND f.deleted_at IS NULL AND f.status <> 'void') AND (e.count <> coalesce(o.reward_count, 1) "
+                          "OR e.each_pence <> o.reward_each_pence OR e.kind <> o.reward_kind)"):
+        terms = (r["reward_count"] or 1, r["reward_each_pence"], r["reward_kind"])
+        out.append(_issue(f"reward:stale_terms:{r['id']}", "act", "Reward", r["title"],
+                          f"Expected reward #{r['id']} still expects {r['count']} x {fmt(r['each_pence'])} "
+                          f"{r['kind'].upper()}, but the offer now says {terms[0]} x {fmt(terms[1])} {terms[2].upper()}: "
+                          "correct it so the free bets match when they arrive.", f"/offers/{r['offer_id']}", "Open",
+                          records=[f"expected_reward #{r['id']}", f"offer #{r['offer_id']}"],
+                          repairs=[_repair("update_expected_reward", f"correct it to the offer's terms ({terms[0]} x "
+                                           f"{fmt(terms[1])} {terms[2].upper()})", expected_reward_id=r["id"],
+                                           count=terms[0], each=plain(terms[1]), reward_type=terms[2])]))
     for o in conn.execute("SELECT o.id, o.title FROM offers o WHERE o.deleted_at IS NULL AND o.reward_kind IS NOT NULL AND "
                           "o.reward_each_pence > 0 AND o.reward_credited = 0 AND o.status NOT IN ('complete', 'expired', "
                           "'abandoned') AND EXISTS (SELECT 1 FROM positions p WHERE p.offer_id = o.id AND p.kind = "

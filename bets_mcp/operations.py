@@ -536,6 +536,20 @@ def register(server, upstream, limits, settings) -> dict:
                                                      "count": count, "expires_at": expires_at, "received_at": received_at,
                                                      "notes": notes}, reason, dry_run, request_id)
 
+    @tool("update_expected_reward", "Correct an expected reward (how many, value each, type)", EDIT)
+    async def update_expected_reward(expected_reward_id: RecordNo, request_id: ChangeId,
+                                     count: Annotated[int | None, Field(ge=1, le=50)] = None,
+                                     each: Annotated[str, Field(max_length=20)] = "",
+                                     reward_type: Literal["snr", "sr", "cash"] | None = None,
+                                     reason: Reason = "", dry_run: DryRun = False) -> CallToolResult:
+        """Use this when an expected reward holds the wrong shape, e.g. the offer's terms were corrected from 1 x £30 to
+        3 x £10 after the reward was expected (Issues: "3 free bet(s) linked where 1 x £30.00 was expected" offers it as
+        a repair). Corrects only the expectation: never creates, deletes or relinks free bets, keeps the offer link,
+        qualifier, dates and history. Warns when the total value changes. Not money or profit."""
+        return await change("update_expected_reward", {"expected_reward_id": expected_reward_id, "count": count,
+                                                       "each": each, "reward_type": reward_type}, reason, dry_run,
+                            request_id)
+
     @tool("update_offer_progress", "Offer terms and progress (opt-in, deposit...)", EDIT)
     async def update_offer_progress(offer_id: RecordNo, request_id: ChangeId,
                                     opted_in: bool | None = None, deposit_done: bool | None = None, reviewed: bool | None = None,

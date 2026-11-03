@@ -29,7 +29,7 @@ CHANGES = ("update_free_bet", "link_free_bet_to_position", "unlink_free_bet_from
            "recalculate_bet_plan", "validate_bet_plan", "cancel_bet_plan", "convert_bet_plan_to_position",
            "record_bookmaker_placement", "record_exchange_order", "record_exchange_fill", "cancel_exchange_order",
            "mark_exchange_fully_matched", "record_matched_bet", "record_funding_transfer", "add_record_evidence",
-           "expect_reward", "reconcile_rewards", "mark_reward_received", "update_offer_progress",
+           "expect_reward", "reconcile_rewards", "mark_reward_received", "update_expected_reward", "update_offer_progress",
            "set_position_outcomes", "dismiss_issue", "reopen_issue", "mark_alerts_notified",
            "record_unhedged_qualifier", "set_hedge_strategy", "record_funding_repayment")
 

@@ -4,6 +4,7 @@ issues. Same rules as every change: validated first, applied only through servic
 request_id, audited, and run under the user's permission levels:
   planning    create / update / recalculate / validate / cancel plans, attach evidence, expect a reward
   safe_edit   record placements and fills the user confirmed, record funding the user made, reconcile rewards,
+              correct an expected reward's shape,
               offer facts, outcome models, dismiss an issue reviewed as a false positive
 """
 from __future__ import annotations
@@ -411,6 +412,35 @@ def op_mark_reward_received(conn, p: dict) -> Plan:
     return plan
 
 
+def op_update_expected_reward(conn, p: dict) -> Plan:
+    rid = _int(p, "expected_reward_id")
+    r = services.row(conn, "expected_rewards", rid)
+    if not r:
+        raise UserError(f"No expected reward #{rid}")
+    count = int(p["count"]) if p.get("count") not in (None, "") else r["count"]
+    each = plans._pence(p["each"], "each") if p.get("each") not in (None, "") else r["each_pence"]
+    kind = p.get("reward_type") or r["kind"]
+    shape = lambda n, e, k: f"{n} x {fmt(e)} {k.upper()}"
+    before, after = (r["count"], r["each_pence"], r["kind"]), (count, each, kind)
+    plan = Plan("update_expected_reward", "safe_edit", f"Expected reward #{rid}: {shape(*before)} -> {shape(*after)}",
+                touches=[("expected_reward", rid)], noop=before == after,
+                effects=["corrects the expectation only: no free bet is created, deleted or relinked",
+                         "the offer link, qualifier, dates and history stay; never money or profit"])
+    plan.blocked = rewards.correction_problem(conn, r, count, each, kind)
+    if count * each != r["count"] * r["each_pence"]:
+        plan.warnings.append(f"the total changes from {fmt(r['count'] * r['each_pence'])} to {fmt(count * each)}")
+    tokens = [t for t in rewards.linked_tokens(conn, rid) if t["status"] != "void"]
+    if tokens and (len(tokens) > count or any(t["face_value_pence"] != each for t in tokens)):
+        plan.warnings.append(f"the {len(tokens)} linked free bet(s) still won't match {shape(*after)}")
+    o = services.row(conn, "offers", r["offer_id"]) if r["offer_id"] else None
+    if o and o["reward_each_pence"] and o["reward_kind"] and (o["reward_count"] or 1, o["reward_each_pence"],
+                                                              o["reward_kind"]) != after:
+        plan.warnings.append(f"offer #{o['id']}'s terms say "
+                             f"{shape(o['reward_count'] or 1, o['reward_each_pence'], o['reward_kind'])}")
+    plan.apply = lambda c: rewards.update_expected_reward(c, rid, count=count, each=each, kind=kind, note=_reason(p) or "")
+    return plan
+
+
 # ---------------------------------------------------------------- offer lifecycle facts
 
 def op_update_offer_progress(conn, p: dict) -> Plan:
@@ -691,7 +721,8 @@ NEW = {
     "mark_exchange_fully_matched": op_mark_exchange_fully_matched, "record_matched_bet": op_record_matched_bet,
     "record_funding_transfer": op_record_funding_transfer, "add_record_evidence": op_add_record_evidence,
     "expect_reward": op_expect_reward, "reconcile_rewards": op_reconcile_rewards,
-    "mark_reward_received": op_mark_reward_received, "update_offer_progress": op_update_offer_progress,
+    "mark_reward_received": op_mark_reward_received, "update_expected_reward": op_update_expected_reward,
+    "update_offer_progress": op_update_offer_progress,
     "set_position_outcomes": op_set_position_outcomes, "dismiss_issue": op_dismiss_issue, "reopen_issue": op_reopen_issue,
     "mark_alerts_notified": op_mark_alerts_notified,
     "record_unhedged_qualifier": op_record_unhedged_qualifier, "set_hedge_strategy": op_set_hedge_strategy,

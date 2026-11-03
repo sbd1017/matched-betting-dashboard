@@ -72,6 +72,7 @@ actions answer "What should I do now?".
 | `record_funding_transfer` | safe | money moved for a plan's liability (temporary or permanent), linked to the plan |
 | `settle_position` (`outcome_bucket`, `unusual`) | safe / financial | settle by the outcome that happened; unusual results wait for the user |
 | `expect_reward`, `reconcile_rewards`, `mark_reward_received`, `list_expected_rewards` | planning / safe / read | expected rewards (never profit) and their arrival |
+| `update_expected_reward` | safe | correct an expected reward's count / value each / type when its snapshot is wrong (e.g. offer terms corrected later); never creates, deletes or relinks free bets |
 | `update_offer_progress` | safe | opt-in, deposit, structured terms, required sport/market/legs, reward delay |
 | `add_record_evidence`, `list_record_evidence` | planning / read | what a screenshot showed (kind, facts); files upload at /bets/ |
 | `set_position_outcomes` | safe | give an existing multi-lay position its outcome model |

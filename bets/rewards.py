@@ -90,6 +90,54 @@ def _refresh(conn, rid: int) -> str:
     return status
 
 
+def correction_problem(conn, r: dict, count: int, each: int, kind: str) -> str | None:
+    """Why an expected reward cannot be corrected to count x each kind (None when it can)."""
+    if r["status"] == "void":
+        return f"Expected reward #{r['id']} is void"
+    if kind not in ("snr", "sr", "cash"):
+        return "reward type: snr, sr or cash"
+    if not 1 <= count <= 50:
+        return "count: 1 to 50"
+    if each <= 0:
+        return "value each must be more than zero"
+    tokens = [t for t in linked_tokens(conn, r["id"]) if t["status"] != "void"]
+    if tokens and kind == "cash":
+        return f"{len(tokens)} free bet(s) are linked to expected reward #{r['id']}, so it can't become a cash reward"
+    other = sorted({t["kind"] for t in tokens} - {kind})
+    if other:
+        return f"the linked free bets are {', '.join(k.upper() for k in other)}, not {kind.upper()}"
+    return None
+
+
+def update_expected_reward(conn, rid: int, *, count=None, each=None, kind=None, note: str = "") -> dict:
+    """Correct an expected reward's snapshot (how many, value each, type), e.g. after its offer's terms were corrected
+    from 1 x £30 to 3 x £10. Never creates, deletes or relinks a free bet; the offer link, qualifier, dates and
+    audit history stay. The status still follows the linked free bets (_refresh), and the offer is synced."""
+    r = services.row(conn, "expected_rewards", int(rid))
+    if not r:
+        raise UserError(f"No expected reward #{rid}")
+    new = {"count": int(count) if count not in (None, "") else r["count"],
+           "each_pence": int(each) if each not in (None, "") else r["each_pence"],
+           "kind": kind or r["kind"]}
+    problem = correction_problem(conn, r, new["count"], new["each_pence"], new["kind"])
+    if problem:
+        raise UserError(problem)
+    changed = {k: v for k, v in new.items() if r[k] != v}
+    if not changed:
+        return {"expected_reward_id": r["id"], "changed": {}, "status": r["status"]}
+    conn.execute("UPDATE expected_rewards SET " + ", ".join(f"{k} = ?" for k in changed) + ", updated_at = ? WHERE id = ?",
+                 (*changed.values(), times.now_iso(), r["id"]))
+    services.audit(conn, "expected_reward", r["id"], "corrected", {k: r[k] for k in changed}, changed,
+                   note or "expected reward corrected")
+    status = _refresh(conn, r["id"])
+    if r["offer_id"]:
+        from . import offer_state
+        offer_state.sync(conn, r["offer_id"], note=f"expected reward #{r['id']} corrected")
+    return {"expected_reward_id": r["id"], "changed": changed, "status": status,
+            "total": r["count"] * r["each_pence"] if "count" not in changed and "each_pence" not in changed
+            else new["count"] * new["each_pence"]}
+
+
 def candidates(conn, r: dict) -> list[dict]:
     """Free bets that could be this reward: same bookmaker, type and value, not linked to another reward, not void,
     credited no earlier than a day before the reward was expected to be due."""

@@ -76,7 +76,7 @@ CHANGE_TOOLS.update({
     "record_funding_transfer": {"from_account": "Lloyds", "to_account": "Smarkets", "amount": "1"},
     "add_record_evidence": {"record_type": "plan", "record_id": 1, "kind": "other"},
     "expect_reward": {"offer_id": 1}, "reconcile_rewards": {}, "mark_reward_received": {"expected_reward_id": 1},
-    "update_offer_progress": {"offer_id": 1, "opted_in": True},
+    "update_expected_reward": {"expected_reward_id": 1, "count": 3}, "update_offer_progress": {"offer_id": 1, "opted_in": True},
     "set_position_outcomes": {"position_id": 1, "outcomes": ["A", "B"], "legs": [{"leg_id": 1, "covers": ["A"]},
                                                                                   {"leg_id": 2, "covers": ["A"]}]},
     "dismiss_issue": {"issue_key": "x:1", "reason": "test"},
@@ -154,9 +154,9 @@ def test_server_version_tracks_the_plugin_and_the_tool_manifest(mcp):
     assert tools_fingerprint(mcp.server) == before
 
 
-def test_tool_manifest_is_exactly_the_expected_96(mcp):
+def test_tool_manifest_is_exactly_the_expected_98(mcp):
     names = [t.name for t in list_tools(mcp, None)]
-    assert len(names) == len(set(names)) == 97 == len(EXPECTED_TOOLS)
+    assert len(names) == len(set(names)) == 98 == len(EXPECTED_TOOLS)
     assert {"record_unhedged_qualifier", "set_hedge_strategy"} <= set(names)
 
 
