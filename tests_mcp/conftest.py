@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import itertools
 import json
 import os
 import secrets
@@ -193,6 +194,11 @@ class Mcp:
         self.thread.join(10)
 
 
+# A different visitor IP for every client: each one has its own nginx rate-limit allowance (12 OAuth requests a
+# minute), and one connect() spends six of them, so two random draws of the same IP within a minute could hit 429.
+VISITOR_IPS = itertools.cycle([f"{net}.{i}" for net in ("198.51.100", "192.0.2") for i in range(1, 255)])
+
+
 class Nginx:
     """The tracked nginx config in front of both services (as test_public_bets does for /bets)."""
 
@@ -252,7 +258,7 @@ http {{
 
     def client(self, ip: str | None = None) -> httpx2.Client:
         """A visitor arriving through Cloudflare (Host example.com, its own CF-Connecting-IP)."""
-        ip = ip or f"198.51.100.{secrets.randbelow(250) + 1}"
+        ip = ip or next(VISITOR_IPS)
         return httpx2.Client(base_url=self.base, follow_redirects=False, timeout=20,
                              headers={"Host": "example.com", "CF-Connecting-IP": ip, "CF-Ray": "test"})
 
