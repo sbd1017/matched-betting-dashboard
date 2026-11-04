@@ -29,6 +29,10 @@ CAPITAL_MEANING = {
 LIMIT = 200
 
 
+NEXT_LAY_NOTE = ("laid one leg at a time: locked_in assumes the next lay is placed; without it the worst case "
+                 "is if_back_loses")
+
+
 def t(value: str | None) -> str | None:
     return times.local(value, "%Y-%m-%d %H:%M") if value else None
 
@@ -154,7 +158,9 @@ def position(conn, pid: int) -> dict:
         proj = outlook.position_projection(conn, pid)
         out["projection"] = ({"if_back_wins": m(proj["if_back_wins"]), "if_back_loses": m(proj["if_back_loses"]),
                               "locked_in": m(proj["locked"]),
-                              "warning": "several lay bets: the projection assumes they all lose together"
+                              "awaiting_next_lay": proj["awaiting_next_lay"],
+                              "warning": NEXT_LAY_NOTE if proj["awaiting_next_lay"] else
+                              "several lay bets: the projection assumes they all lose together"
                               if proj["assumes_all_lays_lose_together"] else None} if proj else None)
         out["event_started"] = bool(p["event_at"] and p["event_at"] < times.now_iso())
         out["realised_result"] = None
@@ -429,7 +435,9 @@ def still_to_come_breakdown(conn) -> dict:
         return {"position_id": i["position_id"], "event": i["event"], "selection": i["selection"],
                 "event_at": t(i["event_at"]), "locked_in": m(p["locked"]) if p else None,
                 "if_back_wins": m(p["if_back_wins"]) if p else None, "if_back_loses": m(p["if_back_loses"]) if p else None,
-                "note": i.get("note") or ("several lay bets: assumes they all lose together"
+                "awaiting_next_lay": p["awaiting_next_lay"] if p else False,
+                "note": i.get("note") or (NEXT_LAY_NOTE if p and p["awaiting_next_lay"] else
+                                          "several lay bets: assumes they all lose together"
                                           if p and p["assumes_all_lays_lose_together"] else None)}
     return {"still_to_come": m(b["total"]),
             "open_positions": {"total": m(b["locked"]), "items": [pos(i) for i in b["positions"]]},

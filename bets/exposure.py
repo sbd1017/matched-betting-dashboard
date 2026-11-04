@@ -69,6 +69,27 @@ def outcomes(conn, pid, fallback):
     return tuple(min(sum(s['pnl'].values()) for s in scenarios if s['back_wins']==win) for win in (True, False))
 
 
+def after_next_lay(conn, pid):
+    """What a position laid one leg at a time (a double or acca) is set to make once its next lay is placed.
+
+    Such a table has a row where the back loses and every lay loses too: a later leg failed after the first landed,
+    with nothing placed against it. That row only happens if the next lay is never placed, so this is the worst of the
+    other rows. None for every other position, including one whose next lay is already in its table.
+    """
+    data = valid(conn, pid)
+    if data is None:
+        return None
+    legs, scenarios = data
+    lays = [str(l['id']) for l in legs if l['side']=='lay']
+    if not lays:
+        return None
+    uncovered = [s for s in scenarios if not s['back_wins'] and all(s['pnl'][lid] < 0 for lid in lays)]
+    others = [s for s in scenarios if s not in uncovered]
+    if not uncovered or not any(not s['back_wins'] for s in others):
+        return None
+    return min(sum(s['pnl'].values()) for s in others)
+
+
 def leg_liability(conn, leg, fallback):
     data = valid(conn, leg['position_id'])
     if data is None:

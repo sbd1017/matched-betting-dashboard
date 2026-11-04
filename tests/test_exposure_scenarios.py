@@ -75,3 +75,53 @@ def test_position_page(browser,app):
     assert 'Settle each bet below' in page.text
     assert '45.13' in page.text and '47.43' in page.text
     assert 'value="back_won"' not in page.text
+
+
+def staged_double(conn, world, stake=700):
+    """A £10 free bet double returning £120, with only the first leg laid so far."""
+    free = services.create_free_bet(conn, account_id=world['betfred'], face_value=1000, kind='snr')
+    pid = services.create_position(conn, event='Example double', kind='free_bet_snr', legs=[
+        dict(account_id=world['betfred'], side='back', stake_pence=1000, odds='13', free_bet_id=free),
+        dict(account_id=world['smarkets'], side='lay', stake_pence=stake, odds='3.5', commission_bp=0)])
+    ids = [str(l['id']) for l in exposure.legs_for(conn, pid)]
+    scenarios = [dict(label=label, back_wins=win, pnl=dict(zip(ids, pnl))) for label, win, pnl in [
+        ('Both land', True, [12000, -1750]), ('First lands, second fails', False, [0, -1750]),
+        ('First fails', False, [0, 700])]]
+    exposure.configure(conn, pid, scenarios, 'Outcome model of the double')
+    return pid, ids
+
+
+def test_staged_double_counts_as_if_the_next_lay_goes_on(conn, world):
+    pid, ids = staged_double(conn, world)
+    assert exposure.after_next_lay(conn, pid) == 700
+    proj = outlook.position_projection(conn, pid)
+    assert proj['locked'] == 700 and proj['awaiting_next_lay']
+    assert proj['if_back_loses'] == -1750                                # the real worst case stays visible
+    assert metrics.open_lay_liability(conn) == 1750                      # and the exchange still holds it
+    come = outlook.still_to_come(conn)
+    assert come['locked'] == 700 and come['awaiting_next_lay'] == 1
+
+
+def test_staged_double_is_locked_normally_once_the_next_lay_is_on(conn, world):
+    pid, ids = staged_double(conn, world)
+    second = services.add_leg(conn, pid, dict(account_id=world['smarkets'], side='lay', stake_pence=2450, odds='4.9',
+                                              commission_bp=0))
+    legs = [str(l['id']) for l in exposure.legs_for(conn, pid)]
+    assert len(legs) == 3 and second
+    scenarios = [dict(label=label, back_wins=win, pnl=dict(zip(legs, pnl))) for label, win, pnl in [
+        ('Both land', True, [12000, -1750, -9555]), ('Second fails', False, [0, -1750, 2450])]]
+    exposure.configure(conn, pid, scenarios, 'Next lay placed')
+    assert exposure.after_next_lay(conn, pid) is None
+    proj = outlook.position_projection(conn, pid)
+    assert proj['locked'] == 695 and not proj['awaiting_next_lay']
+
+
+def test_other_positions_keep_the_worse_outcome(conn, world):
+    pid, ids = setup(conn, world)                                         # correct scores: every lay wins if the back loses
+    assert exposure.after_next_lay(conn, pid) is None
+    assert outlook.position_projection(conn, pid)['locked'] == -100
+    single = services.create_position(conn, event='Plain single', legs=[
+        dict(account_id=world['betfred'], side='back', stake_pence=1000, odds='3'),
+        dict(account_id=world['smarkets'], side='lay', stake_pence=1000, odds='3.1', commission_bp=0)])
+    assert exposure.after_next_lay(conn, single) is None
+    assert not outlook.position_projection(conn, single)['awaiting_next_lay']

@@ -551,3 +551,30 @@ def test_open_positions_list_soonest_first(app, book, browser):
                 {"account_id": book["betfred"], "side": "back", "stake_pence": 500, "odds": "2.0"}])
     page = browser.get("/bets/positions").text
     assert page.index("Sooner game") < page.index("Later game") < page.index("No time game")
+
+
+# ================================================================ a double laid one leg at a time
+
+def test_double_laid_leg_by_leg_shows_what_it_should_make(app, book, api, browser):
+    code, body = change(api, "create_bet_plan", "dbl-1", event="Double: Example FC + Sample Town", market="Double", selection="Draw + Draw",
+                        event_time=times.local(at(30), "%Y-%m-%dT%H:%M"), kind="free_bet_snr", bookmaker="Coral",
+                        back_odds="13", outcomes=["Both draws", "First draw only", "No first draw"],
+                        back_covers=["Both draws"],
+                        lays=[{"exchange": "Smarkets", "odds": "3.5", "stake": "7.00",
+                               "covers": ["Both draws", "First draw only"], "label": "Lay Draw (first leg)"}])
+    assert code == 200 and body["status"] == "applied", body
+    pid = body["result"]["plan_id"]
+    code, rec = change(api, "record_matched_bet", "dbl-r", plan_id=pid, confirmed_fully_matched=True)
+    assert rec["status"] == "applied", rec
+    pos = q1(app, "SELECT position_id FROM bet_plans WHERE id = ?", pid)
+    read = api.get(f"{API}/read/position", params={"ref": str(pos)}).json()["data"]["projection"]
+    assert read["locked_in"] == "7.00" and read["if_back_loses"] == "-17.50" and read["awaiting_next_lay"]
+    assert "next lay" in read["warning"]
+    stc = api.get(f"{API}/read/still_to_come").json()["data"]["open_positions"]
+    assert stc["total"] == "7.00" and stc["items"][0]["awaiting_next_lay"]
+    with app.state.db.read() as conn:
+        assert metrics.open_lay_liability(conn) == 1750                # the exchange still holds the real liability
+    page = browser.get("/bets/still-to-come").text
+    assert "after the next lay" in page and "without it you could lose £17.50" in page
+    assert "1 needs a next lay" in browser.get("/bets/").text
+    assert "1 after the next lay" in browser.get("/bets/positions?status=open").text

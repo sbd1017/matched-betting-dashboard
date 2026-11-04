@@ -8,8 +8,9 @@ Read-only, like metrics.py. Every figure comes from the ledger and the records, 
   open bets, no offer in progress). Snoozed accounts are left out until the snooze ends.
 * Retention: what you actually kept from free bets you have used, as a share of their face value, from your
   own settled free-bet positions. Until there are enough of them, a typical figure is used and labelled so.
-* Still to come: locked-in results of open positions (the worse of the two outcomes, so it is never
-  optimistic), free bets held valued at your retention, and rewards you have qualified for but not received.
+* Still to come: locked-in results of open positions (the worse of the two outcomes), free bets held valued at your
+  retention, and rewards you have qualified for but not received. A double or acca laid one leg at a time is counted
+  as if its next lay goes on (exposure.after_next_lay) and is labelled so; its real worst case stays on show.
 """
 from __future__ import annotations
 
@@ -110,7 +111,8 @@ FINISHED_AFTER_HOURS = 3        # an open position whose event started this long
 
 def position_projection(conn, position_id: int) -> dict | None:
     """What an open position is set to make: the net result if the back selection wins / loses, and the lower of
-    the two (locked in). None unless it has both a back and a lay bet."""
+    the two (locked in), or what it makes after its next lay if it is laid one leg at a time. None unless it has both
+    a back and a lay bet."""
     p = conn.execute("SELECT * FROM positions WHERE id = ?", (position_id,)).fetchone()
     legs = [dict(r) for r in conn.execute("SELECT * FROM legs WHERE position_id = ? AND deleted_at IS NULL", (position_id,))]
     if not (any(l["side"] == "back" for l in legs) and any(l["side"] == "lay" for l in legs)):
@@ -120,7 +122,9 @@ def position_projection(conn, position_id: int) -> dict | None:
     if win is None:
         return None
     lays = sum(1 for l in legs if l["side"] == "lay")
-    return {"if_back_wins": win, "if_back_loses": lose, "locked": min(win, lose), "lays": lays,
+    next_lay = exposure.after_next_lay(conn, position_id)
+    return {"if_back_wins": win, "if_back_loses": lose, "locked": min(win, lose) if next_lay is None else next_lay,
+            "awaiting_next_lay": next_lay is not None, "lays": lays,
             "assumes_all_lays_lose_together": lays > 1 and not exposure.configured(conn, position_id)}
 
 
@@ -163,6 +167,7 @@ def still_to_come_breakdown(conn) -> dict:
     free_total = sum(f["worth"] for f in free)
     reward_total = sum(r["worth"] for r in rewards)
     return {"total": locked + free_total + reward_total, "locked": locked, "free_bets": free_total,
+            "awaiting_next_lay": sum(1 for i in positions if i["projection"] and i["projection"]["awaiting_next_lay"]),
             "rewards": reward_total, "positions": positions, "free_bet_items": free, "reward_items": rewards,
             "not_counted_finished": finished, "retention": ret}
 
@@ -171,6 +176,7 @@ def still_to_come(conn) -> dict:
     b = still_to_come_breakdown(conn)
     return {"total": b["total"], "locked": b["locked"], "free_bets": b["free_bets"], "rewards": b["rewards"],
             "rewards_count": len(b["reward_items"]), "retention": b["retention"],
+            "awaiting_next_lay": sum(1 for i in b["positions"] if i["projection"] and i["projection"]["awaiting_next_lay"]),
             "finished_open": len(b["not_counted_finished"])}
 
 

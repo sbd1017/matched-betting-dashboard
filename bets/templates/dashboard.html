@@ -46,7 +46,7 @@
   <div class="stat">
     <span class="k">Still to come</span>
     <span class="v {{ 'gain' if come.total > 0 else '' }}">{{ fmt(come.total, signed=True) }}</span>
-    <span class="s">{{ fmt(come.locked, signed=True) }} locked in open bets · {{ fmt(come.free_bets) }} in free bets{% if come.rewards %} · {{ fmt(come.rewards) }} in {{ come.rewards_count }} reward{{ 's' if come.rewards_count > 1 else '' }} due{% endif %}
+    <span class="s">{{ fmt(come.locked, signed=True) }} {{ 'in' if come.awaiting_next_lay else 'locked in' }} open bets{% if come.awaiting_next_lay %} ({{ come.awaiting_next_lay }} need{{ '' if come.awaiting_next_lay > 1 else 's' }} a next lay){% endif %} · {{ fmt(come.free_bets) }} in free bets{% if come.rewards %} · {{ fmt(come.rewards) }} in {{ come.rewards_count }} reward{{ 's' if come.rewards_count > 1 else '' }} due{% endif %}
       <br><span class="m3">Free bets at {{ 'your' if come.retention.snr.own else 'a typical' }} {{ come.retention.snr.pct }}% retention</span>
       {% if come.finished_open %}<br><span class="warn-text">{{ come.finished_open }} finished position{{ 's' if come.finished_open > 1 else '' }} not counted until settled</span>{% endif %}
       <br><a class="small" href="{{ u('/still-to-come') }}">What makes it up</a></span>
@@ -76,7 +76,7 @@
   <summary>How these figures are worked out</summary>
   <ul class="list small">
     <li><b>Realised profit</b> {{ fmt(s.profit_lifetime, signed=True) }} = every settled result, reward and adjustment, plus the stakes of settled bets. Deposits and withdrawals never count.</li>
-    <li><b>Still to come</b> {{ fmt(come.total, signed=True) }} = {{ fmt(come.locked, signed=True) }} (the worse outcome of each open position) + {{ fmt(come.free_bets) }} (free bets held × {{ come.retention.snr.pct }}% retention{{ ', from your ' ~ come.retention.snr.count ~ ' settled free bets' if come.retention.snr.own else ', a typical figure until you have settled 3' }}){% if come.rewards %} + {{ fmt(come.rewards) }} (rewards you have qualified for){% endif %}.</li>
+    <li><b>Still to come</b> {{ fmt(come.total, signed=True) }} = {{ fmt(come.locked, signed=True) }} (the worse outcome of each open position{% if come.awaiting_next_lay %}, or after the next lay for {{ come.awaiting_next_lay }} laid one leg at a time{% endif %}) + {{ fmt(come.free_bets) }} (free bets held × {{ come.retention.snr.pct }}% retention{{ ', from your ' ~ come.retention.snr.count ~ ' settled free bets' if come.retention.snr.own else ', a typical figure until you have settled 3' }}){% if come.rewards %} + {{ fmt(come.rewards) }} (rewards you have qualified for){% endif %}.</li>
     <li><b>Available to bet</b> {{ fmt(s.available) }} = bookmakers {{ fmt(s.bookmaker_balance) }} + exchanges {{ fmt(s.exchange_balance) }} − lay liability held {{ fmt(s.lay_liability) }}.</li>
     <li><b>Check</b>: betting balances {{ fmt(s.betting_balance) }} = your capital {{ fmt(s.own_capital) }} + temporary funding out {{ fmt(s.temporary_outstanding) }} + retained profit {{ fmt(s.retained_profit, signed=True) }} − stakes in play {{ fmt(s.unsettled_stakes) }}{% if s.consistent %} ✓{% endif %}.</li>
   </ul>

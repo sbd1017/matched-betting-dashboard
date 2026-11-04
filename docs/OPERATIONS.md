@@ -34,7 +34,8 @@ yourself; it never places bets, logs in to bookmakers or touches bookmaker/excha
 
 * **Dashboard → Up next**: what needs you (started bets with Back won / Back lost / Void, expiring free bets, money
   due back to the bank with any shortfall, rewards to confirm with "It arrived", withdrawals on their way, idle cash
-  to withdraw, issues), then kick-offs and deadlines by day. "Still to come" values free bets at your own retention.
+  to withdraw, issues), then kick-offs and deadlines by day. "Still to come" values free bets at your own retention, and counts a double or acca
+  you lay one leg at a time as if you place the next lay (it says so; the real worst case stays on the page).
 * **Issues**: everything that needs putting right, each linked to where it is fixed. **Accounts → Check balances**:
   tick what matches or type the real balance, for every account at once.
 * **Undo**: the message after settling, adding free bets or a reward, a transfer, an entry or balance adjustments

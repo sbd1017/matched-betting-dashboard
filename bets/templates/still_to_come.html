@@ -3,7 +3,7 @@
 {% block content %}
 <p class="crumbs"><a href="{{ u('/') }}">Dashboard</a></p>
 <div class="page-head"><h1>Still to come</h1><span class="aside"><b class="{{ 'gain' if b.total > 0 else ('loss' if b.total < 0 else '') }}">{{ fmt(b.total, signed=True) }}</b></span></div>
-<p class="note">What your open bets have locked in, plus unused free bets at {{ 'your' if b.retention.snr.own else 'a typical' }} {{ b.retention.snr.pct }}% retention, plus rewards you have qualified for. Every item is listed, so nothing in the total is hidden.</p>
+<p class="note">What your open bets have locked in, plus unused free bets at {{ 'your' if b.retention.snr.own else 'a typical' }} {{ b.retention.snr.pct }}% retention, plus rewards you have qualified for. Every item is listed, so nothing in the total is hidden.{% if b.awaiting_next_lay %} Doubles and accas you lay one leg at a time count as if you place the next lay when a leg lands: {{ b.awaiting_next_lay }} open now.{% endif %}</p>
 
 {% if b.not_counted_finished %}
 <section class="first">
@@ -22,9 +22,9 @@
   <div class="grp">Open positions<span class="cnt">{{ fmt(b.locked, signed=True) }}</span></div>
   {% for i in b.positions %}
   <a class="row" href="{{ u('/positions/' ~ i.position_id) }}">
-    <div class="kind k-ink"><b>Locked</b><span>{{ local(i.event_at, '%a %H:%M') if i.event_at else '—' }}</span></div>
-    <div><h3>{{ i.event }}</h3><p>{{ i.selection or '' }}{% if i.projection %} · back wins {{ fmt(i.projection.if_back_wins, signed=True) }} · back loses {{ fmt(i.projection.if_back_loses, signed=True) }}{% if i.projection.assumes_all_lays_lose_together %} · several lays: assumes they all lose together{% endif %}{% else %} · {{ i.note }}{% endif %}</p></div>
-    <div class="ac"><div class="worth"><b class="{{ 'gain' if i.projection and i.projection.locked > 0 else ('loss' if i.projection and i.projection.locked < 0 else '') }}">{{ fmt(i.projection.locked, signed=True) if i.projection else '—' }}</b><small>the worse outcome</small></div></div>
+    <div class="kind {{ 'k-amb' if i.projection and i.projection.awaiting_next_lay else 'k-ink' }}"><b>{{ 'Next lay' if i.projection and i.projection.awaiting_next_lay else 'Locked' }}</b><span>{{ local(i.event_at, '%a %H:%M') if i.event_at else '—' }}</span></div>
+    <div><h3>{{ i.event }}</h3><p>{{ i.selection or '' }}{% if i.projection %} · back wins {{ fmt(i.projection.if_back_wins, signed=True) }} · back loses {{ fmt(i.projection.if_back_loses, signed=True) }}{% if i.projection.awaiting_next_lay %} · if a leg lands, place the next lay: without it you could lose {{ fmt(-i.projection.if_back_loses) }}{% elif i.projection.assumes_all_lays_lose_together %} · several lays: assumes they all lose together{% endif %}{% else %} · {{ i.note }}{% endif %}</p></div>
+    <div class="ac"><div class="worth"><b class="{{ 'gain' if i.projection and i.projection.locked > 0 else ('loss' if i.projection and i.projection.locked < 0 else '') }}">{{ fmt(i.projection.locked, signed=True) if i.projection else '—' }}</b><small>{{ 'after the next lay' if i.projection and i.projection.awaiting_next_lay else 'the worse outcome' }}</small></div></div>
   </a>
   {% else %}<div class="row nokind"><div><p class="m2">No open positions.</p></div><div class="ac"></div></div>{% endfor %}
 </section>

@@ -867,10 +867,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             for r in rows:
                 r["started"] = r["status"] == "open" and bool(r["event_at"]) and r["event_at"] <= now
             open_rows = [r for r in rows if r["status"] == "open" and r.get("if_back") is not None]
+            next_lay = {r["id"]: exposure.after_next_lay(conn, r["id"]) for r in open_rows}
             counts = {"open": conn.execute("SELECT count(*) FROM positions WHERE deleted_at IS NULL AND status = 'open'").fetchone()[0],
                       "started": conn.execute("SELECT count(*) FROM positions WHERE deleted_at IS NULL AND status = 'open' "
                                               "AND event_at IS NOT NULL AND event_at <= ?", (now,)).fetchone()[0],
-                      "locked": sum(min(r["if_back"], r["if_lay"]) for r in open_rows),
+                      "locked": sum(min(r["if_back"], r["if_lay"]) if next_lay[r["id"]] is None else next_lay[r["id"]]
+                                    for r in open_rows),
+                      "awaiting_next_lay": sum(1 for v in next_lay.values() if v is not None),
                       "liability": metrics.open_lay_liability(conn)}
             return render(request, "positions.html", {"rows": rows, "p": dict(p), "status": status, "counts": counts,
                                                       "accounts": accounts(conn, ("bookmaker", "exchange"), False),

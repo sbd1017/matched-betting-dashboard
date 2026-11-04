@@ -38,6 +38,9 @@ or exchange and it never moves money.
 - An Operations page that lists what needs doing next, and an Issues page that spots records that don't
   add up and offers a fix you can preview first. For example, if a bookmaker sends 3 x £10 free bets when
   you'd expected 1 x £30, it can correct the expected reward without touching the free bets themselves.
+- A Still to come figure: what your open bets have locked in, plus unused free bets and rewards you've qualified
+  for. A double or acca you lay one leg at a time counts as if you'll place the next lay when a leg lands. It's
+  labelled Next lay, and the real worst case stays on show.
 - Profit page, calendar, search, CSV, JSON and calendar exports, and it works fine on a phone. It's dark by
   default, with a light theme if you prefer.
 - Works in pounds by default, but you can switch to euros, dollars and a few others in Settings.

@@ -154,6 +154,8 @@ free bets have no expiry. Repeat these to the user; don't "fix" them silently.
 - Free bets past their expiry are marked expired; positions whose event has started appear under Issues
   with one-tap settle buttons.
 - "Still to come" and retention are worked out from settled records; the assistant should never estimate them.
+  A double or acca laid one leg at a time (an outcome where the back and every lay lose) counts as if its next lay is
+  placed: `awaiting_next_lay` on the position, with the real worst case still in `if_back_loses`.
 
 ## For the user: after deploying
 
