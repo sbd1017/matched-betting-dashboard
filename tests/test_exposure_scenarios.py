@@ -125,3 +125,109 @@ def test_other_positions_keep_the_worse_outcome(conn, world):
         dict(account_id=world['smarkets'], side='lay', stake_pence=1000, odds='3.1', commission_bp=0)])
     assert exposure.after_next_lay(conn, single) is None
     assert not outlook.position_projection(conn, single)['awaiting_next_lay']
+
+
+def _lay(conn, world, event, stake, odds, account='smarkets'):
+    pid = services.create_position(conn, event=event, legs=[
+        dict(account_id=world[account], side='lay', stake_pence=stake, odds=odds, commission_bp=0)])
+    return pid, exposure.legs_for(conn, pid)[0]['id']
+
+
+def _available(conn, world):
+    return services.expected_balance(conn, world['smarkets'], 'available')['available']
+
+
+def test_lays_in_one_market_hold_its_worst_outcome_across_positions(conn, world):
+    _, draw = _lay(conn, world, 'Double one', 4000, '3')
+    _, home = _lay(conn, world, 'Double two', 2000, '2.5')
+    added_up = 8000 + 3000
+    assert metrics.open_lay_liability(conn, world['smarkets']) == added_up
+    before = _available(conn, world)
+    exposure.set_market(conn, [(draw, 'Draw'), (home, 'Example FC')], 'Example FC v Sample Town', 'Full-time result')
+    # If the draw wins: -80.00 + 20.00. If the home side wins: +40.00 - 30.00.
+    assert metrics.open_lay_liability(conn, world['smarkets']) == 6000
+    assert metrics.open_lay_liability(conn) == 6000
+    assert _available(conn, world) == before + added_up - 6000
+
+
+def test_one_position_still_shows_its_own_liability(conn, world):
+    first, draw = _lay(conn, world, 'Double one', 4000, '3')
+    _, home = _lay(conn, world, 'Double two', 2000, '2.5')
+    exposure.set_market(conn, [(draw, 'Draw'), (home, 'Example FC')], 'Example FC v Sample Town', 'Full-time result')
+    assert metrics.open_lay_liability(conn, position_id=first) == 8000
+    assert services.position_pnl(conn, first) == 0
+
+
+def test_same_selection_adds_up_and_spellings_of_it_match(conn, world):
+    _, a = _lay(conn, world, 'One', 1000, '3')
+    _, b = _lay(conn, world, 'Two', 1000, '3')
+    exposure.set_market(conn, [(a, 'Draw')], 'Man Utd v Spurs', 'Match Odds')
+    exposure.set_market(conn, [(b, 'The Draw')], 'Manchester United vs Tottenham', 'Full-time result')
+    assert metrics.open_lay_liability(conn) == 4000
+
+
+def test_different_markets_and_exchanges_and_unnamed_lays_do_not_net(conn, world):
+    _, a = _lay(conn, world, 'One', 1000, '3')
+    _, b = _lay(conn, world, 'Two', 1000, '3')
+    _, c = _lay(conn, world, 'Three', 1000, '3')
+    exposure.set_market(conn, [(a, 'Draw')], 'A v B', 'Full-time result')
+    exposure.set_market(conn, [(b, '1-1')], 'A v B', 'Correct score')
+    assert metrics.open_lay_liability(conn) == 6000
+
+    other = services.create_account(conn, name='Other exchange', kind='exchange')
+    pid = services.create_position(conn, event='Four', legs=[
+        dict(account_id=other, side='lay', stake_pence=1000, odds='3', commission_bp=0)])
+    leg = exposure.legs_for(conn, pid)[0]['id']
+    with pytest.raises(services.UserError):
+        exposure.set_market(conn, [(c, 'A'), (leg, 'B')], 'A v B', 'Full-time result')
+    exposure.set_market(conn, [(c, 'B')], 'A v B', 'Full-time result')
+    exposure.set_market(conn, [(leg, 'A')], 'A v B', 'Full-time result')
+    assert metrics.open_lay_liability(conn, world['smarkets']) == 1000 + 2000
+    assert metrics.open_lay_liability(conn, other) == 2000
+
+
+def test_a_double_with_its_outcome_table_nets_only_its_named_lay(conn, world):
+    pid = services.create_position(conn, event='Double', legs=[
+        dict(account_id=world['betfred'], side='back', stake_pence=1000, odds='7', free_bet_id=None),
+        dict(account_id=world['smarkets'], side='lay', stake_pence=700, odds='3.5', commission_bp=0),
+        dict(account_id=world['smarkets'], side='lay', stake_pence=2000, odds='2.5', commission_bp=0)])
+    ids = [l['id'] for l in exposure.legs_for(conn, pid)]
+    keys = [str(i) for i in ids]
+    exposure.configure(conn, pid, [
+        dict(label='Both land', back_wins=True, pnl=dict(zip(keys, [6000, -1750, -3000]))),
+        dict(label='Second fails', back_wins=False, pnl=dict(zip(keys, [-1000, -1750, 2000]))),
+        dict(label='First fails', back_wins=False, pnl=dict(zip(keys, [-1000, 700, 2000])))], 'Double')
+    assert metrics.open_lay_liability(conn) == 1750 + 3000
+    _, draw = _lay(conn, world, 'Double two', 4000, '3')
+    exposure.set_market(conn, [(draw, 'Draw'), (ids[2], 'Example FC')], 'Example FC v Sample Town', 'Full-time result')
+    assert metrics.open_lay_liability(conn) == 1750 + 6000
+    assert exposure.valid(conn, pid) is not None
+
+
+def test_market_lets_go_when_a_lay_settles_and_can_be_cleared(conn, world):
+    a_pos, a = _lay(conn, world, 'One', 4000, '3')
+    _, b = _lay(conn, world, 'Two', 2000, '2.5')
+    exposure.set_market(conn, [(a, 'Draw'), (b, 'Example FC')], 'Example FC v Sample Town', 'Full-time result')
+    exposure.set_market(conn, [(a, ''), (b, '')], '', '')
+    assert metrics.open_lay_liability(conn) == 8000 + 3000
+    exposure.set_market(conn, [(a, 'Draw'), (b, 'Example FC')], 'Example FC v Sample Town', 'Full-time result')
+    services.settle_leg(conn, a, 'lost')
+    assert metrics.open_lay_liability(conn) == 3000
+    with pytest.raises(services.UserError):
+        exposure.set_market(conn, [(a, 'Draw')], 'Example FC v Sample Town', 'Full-time result')
+
+
+@pytest.mark.parametrize('lays,event,market', [
+    ([], 'A v B', 'Full-time result'),
+    ([(0, 'Draw')], 'A v B', 'Full-time result'),
+    ('no selection', 'A v B', 'Full-time result'),
+    ('with selection', 'A v B', ''),
+    ('back', 'A v B', 'Full-time result')])
+def test_set_market_refuses_what_it_cannot_net(conn, world, lays, event, market):
+    pid = services.create_position(conn, event='One', legs=[
+        dict(account_id=world['betfred'], side='back', stake_pence=1000, odds='3'),
+        dict(account_id=world['smarkets'], side='lay', stake_pence=1000, odds='3', commission_bp=0)])
+    back, lay = [l['id'] for l in exposure.legs_for(conn, pid)]
+    chosen = {'no selection': [(lay, ' ')], 'with selection': [(lay, 'Draw')], 'back': [(back, 'Draw')]}
+    with pytest.raises(services.UserError):
+        exposure.set_market(conn, chosen.get(lays, lays) if isinstance(lays, str) else lays, event, market)

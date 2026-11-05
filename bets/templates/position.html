@@ -54,7 +54,7 @@
       <div class="odd {{ 'lay' if l.side == 'lay' else ('free' if l.free_bet_id else 'back') }}"><div class="o">{{ l.odds }}</div><div class="s">{{ fmt(l.stake_pence) }}{{ ' free' if l.free_bet_id else '' }}</div></div>
       <div class="leg-info">
         <h3>{{ l.side|capitalize }} · {{ l.account }}{% if l.free_bet_id %} {{ pill('Free bet ' ~ (l.free_bet_kind or '')|upper, 'info') }}{% endif %}</h3>
-        <p>{% if l.side == 'lay' %}Liability {{ fmt(l.liability) }} · commission {{ commission_text(l.commission_bp) }} · {% endif %}placed {{ local(l.placed_at) }}{% if l.external_ref %} · ref {{ l.external_ref }}{% endif %} · {{ l.source }}</p>
+        <p>{% if l.side == 'lay' %}Liability {{ fmt(l.liability) }} · commission {{ commission_text(l.commission_bp) }} · {% if l.exchange_market %}{{ l.exchange_event }}, {{ l.exchange_market }}: {{ l.exchange_selection }} · {% endif %}{% endif %}placed {{ local(l.placed_at) }}{% if l.external_ref %} · ref {{ l.external_ref }}{% endif %} · {{ l.source }}</p>
       </div>
       <div class="ac">{{ pill(l.result|capitalize, 'ok' if l.result == 'won' else ('bad' if l.result == 'lost' else ('warn' if l.result == 'pending' else ''))) }}
         {% if l.result != 'pending' %}<div class="worth"><b>{{ fmt(l.settled_amount_pence, signed=True) }}</b><small>{{ local(l.settled_at, '%-d %b %H:%M') }}{% if l.commission_paid_pence %} · comm. {{ fmt(l.commission_paid_pence) }}{% endif %}</small></div>{% endif %}</div>
@@ -95,6 +95,18 @@
         <button class="btn">Move bet</button>
       </form>
     </details>
+    {% if l.side == 'lay' and l.result == 'pending' %}
+    <details><summary>Exchange market</summary>
+      <p class="note">Lays in one market can't all lose, so the exchange holds less than their liabilities added up. Say which market this lay is in, using the same names on each lay, and available cash nets them too. Leave it empty to count this lay in full.</p>
+      <form method="post" action="{{ u('/legs/' ~ l.id ~ '/market') }}" class="cols3">
+        {{ csrf_field() }}
+        <label>Match <input name="event" value="{{ l.exchange_event }}" placeholder="e.g. Home v Away"></label>
+        <label>Market <input name="market" value="{{ l.exchange_market }}" placeholder="e.g. Full-time result"></label>
+        <label>Selection <input name="selection" value="{{ l.exchange_selection }}" placeholder="e.g. Draw"></label>
+        <button class="btn">Save market</button>
+      </form>
+    </details>
+    {% endif %}
     <details><summary>Edit bet</summary>
       <form method="post" action="{{ u('/legs/' ~ l.id) }}" class="cols3">
         {{ csrf_field() }}

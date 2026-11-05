@@ -64,16 +64,21 @@ def open_lay_liability(conn, account_id: int | None = None, position_id: int | N
     rows = conn.execute("SELECT l.* FROM legs l JOIN positions p ON p.id=l.position_id "
                         "WHERE l.side='lay' AND l.result='pending' AND l.deleted_at IS NULL "
                         "AND p.deleted_at IS NULL").fetchall()
+    # What an exchange holds nets lays in one market; one position's own figure is that position's lays alone.
+    holds = exposure.market_holds(conn, account_id) if position_id is None else []
+    in_market = {leg_id for h in holds for leg_id in h['leg_ids']}
     by_position = {}
     for row in rows:
         if account_id is not None and row['account_id'] != account_id:
             continue
         if position_id is not None and row['position_id'] != position_id:
             continue
+        if row['id'] in in_market:
+            continue
         by_position.setdefault(row['position_id'], []).append(row)
-    total = 0
+    total = sum(h['hold'] for h in holds)
     for pid, legs in by_position.items():
-        net = exposure.liability(conn, pid, account_id)
+        net = exposure.liability(conn, pid, account_id, in_market)
         total += net if net is not None else sum(lay_liability(l['stake_pence'], Decimal(l['odds'])) for l in legs)
     return total
 

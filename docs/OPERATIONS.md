@@ -68,7 +68,10 @@ round to the penny once, half-up.
   the retained profit. Earlier withdrawals keep the classification they were recorded with.
 * **Opening balances** (money already at a bookmaker when you start) are capital, not profit.
 * **Stakes** leave the bookmaker balance when placed and count towards profit only once the bet
-  settles; until then they are "tied up". **Lay liability** is held exposure, not a cash movement.
+  settles; until then they are "tied up". **Lay liability** is held exposure, not a cash movement. Lays on one exchange in the
+  same market net off once you say which market each is in (a lay's **Exchange market** on the position page, or
+  `set_lay_market`): only one selection can win, so available cash holds that market's worst outcome. Lays with no market
+  count in full, which can read lower than the exchange.
 * **Profit** = winnings, lay results, commission, refunds, free-bet winnings, cash rewards/bonuses,
   adjustments and reconciliations, plus the stakes of settled bets.
 * **Free bets** are tokens, not cash: no balance change until they win.

@@ -28,7 +28,8 @@ or exchange and it never moves money.
 - Keeps the books properly. Amounts are stored in pence, ledger entries are never edited (only replaced) and
   every change is logged. Profit only comes from settled bets, so deposits, withdrawals and free bet values
   never show up as profit.
-- Splits exchange balances into available cash, money held for open lays, and the total.
+- Splits exchange balances into available cash, money held for open lays, and the total. Lays in the same
+  exchange market net off once you say which market each one is in, the way the exchange does it.
 - Follows each offer from sign up to the reward arriving and being used, and warns you before free bets
   expire. An offer's deadline only shows while there's still something for you to do before it.
 - An Up next list on the dashboard, split into what needs you now and what's just waiting (a bet to settle,

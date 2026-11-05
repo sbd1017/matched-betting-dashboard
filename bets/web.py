@@ -997,6 +997,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             services.update_leg(conn, leg_id, data, note=f.get("note", "").strip())
         return await write(request, fn, "Bet updated", f"/positions/{leg['position_id']}")
 
+    @router.post("/legs/{leg_id}/market")
+    async def leg_market(request: Request, leg_id: int):
+        with db.read() as conn:
+            leg = services.row(conn, "legs", leg_id)
+        if not leg:
+            raise StarletteHTTPException(404)
+        return await write(request, lambda conn, f: exposure.set_market(
+            conn, [(leg_id, f.get("selection", ""))], f.get("event", ""), f.get("market", ""),
+            "exchange market set on the position page"), "Exchange market saved", f"/positions/{leg['position_id']}")
+
     @router.post("/legs/{leg_id}/delete")
     async def remove_leg(request: Request, leg_id: int):
         with db.read() as conn:

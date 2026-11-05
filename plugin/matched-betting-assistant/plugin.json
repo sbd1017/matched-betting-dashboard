@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "matched-betting-assistant",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Run matched betting with your private dashboard: plan bets with server-side calculations (multi-outcome hedges, price drift, validation, funding), record placements and fills atomically from the user's confirmations, settle, reconcile rewards and answer \"what should I do now?\"; plus intake and safe, audited maintenance of records.",
   "author": {
     "name": "Your name"

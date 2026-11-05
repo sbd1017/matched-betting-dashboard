@@ -20,7 +20,7 @@ ALIASES = {"man utd": "manchester united", "man united": "manchester united", "m
            "nottm forest": "nottingham forest", "forest": "nottingham forest", "inter": "inter milan",
            "bayern": "bayern munich", "barca": "barcelona"}
 MARKETS = {"match_odds": ("match odds", "1x2", "full time result", "match result", "win draw win", "win-draw-win",
-                          "fulltime result", "match betting", "result"),
+                          "fulltime result", "full-time result", "match betting", "result"),
            "correct_score": ("correct score", "cs"),
            "btts": ("both teams to score", "btts", "both teams score"),
            "bet_builder": ("bet builder", "betbuilder", "build a bet", "bet builder+", "request a bet"),

@@ -578,3 +578,36 @@ def test_double_laid_leg_by_leg_shows_what_it_should_make(app, book, api, browse
     assert "after the next lay" in page and "without it you could lose £17.50" in page
     assert "1 needs a next lay" in browser.get("/bets/").text
     assert "1 after the next lay" in browser.get("/bets/positions?status=open").text
+
+
+def test_set_lay_market_nets_what_the_exchange_holds(app, book, api):
+    with app.state.db.tx() as conn:
+        legs = []
+        for event, stake, odds in (("Double one", 4000, "3"), ("Double two", 2000, "2.5")):
+            pid = services.create_position(conn, event=event, legs=[
+                {"account_id": book["smarkets"], "side": "lay", "stake_pence": stake, "odds": odds}])
+            legs.append(conn.execute("SELECT id FROM legs WHERE position_id = ?", (pid,)).fetchone()[0])
+    params = dict(event="Example FC v Sample Town", market="Full-time result",
+                  lays=[{"leg_id": legs[0], "selection": "Draw"}, {"leg_id": legs[1], "selection": "Example FC"}])
+    before = api.get(f"{API}/read/account", params={"ref": "Smarkets"}).json()["data"]["balances"]
+    assert before["reserved_lay_liability"] == "110.00"
+
+    code, preview = change(api, "set_lay_market", "market-dry", dry_run=True, **params)
+    assert preview["status"] == "preview" and "£110.00 -> £60.00" in " ".join(preview["effects"])
+    with app.state.db.read() as conn:
+        assert metrics.open_lay_liability(conn) == 11000      # the preview changed nothing
+
+    code, done = change(api, "set_lay_market", "market-1", **params)
+    assert done["status"] == "applied", done
+    after = api.get(f"{API}/read/account", params={"ref": "Smarkets"}).json()["data"]["balances"]
+    assert after["reserved_lay_liability"] == "60.00" and after["total_funds"] == before["total_funds"]
+    assert summary(app).lay_liability == 6000
+
+    seen = api.get(f"{API}/read/exchange_exposure", params={"ref": "Smarkets"}).json()["data"]
+    assert seen["netted_markets"][0]["held"] == "60.00" and seen["netted_markets"][0]["liabilities_added_up"] == "110.00"
+    assert seen["open_lays"][0]["exchange_market"]["selection"] == "Draw"
+
+    code, cleared = change(api, "set_lay_market", "market-clear", clear=True, lays=params["lays"])
+    assert cleared["status"] == "applied" and summary(app).lay_liability == 11000
+    code, refused = change(api, "set_lay_market", "market-none", lays=params["lays"])
+    assert code >= 400 or refused.get("status") != "applied"

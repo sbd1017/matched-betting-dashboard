@@ -189,3 +189,19 @@ def test_logout_form(browser):
     r = submit(browser.c, "/bets/", "/bets/logout")
     assert r.status_code == 303
     assert browser.get("/bets/", follow_redirects=False).status_code == 303
+
+
+def test_lay_exchange_market_form(app, browser):
+    ids = seed(app)
+    page = f"/bets/positions/{ids['position']}"
+    ok(submit(browser.c, page, page + "/legs", {"side": "lay", "account_id": ids["smarkets"], "stake": "1", "odds": "4.4"}))
+    with app.state.db.read() as conn:
+        lay = conn.execute("SELECT id FROM legs WHERE position_id=? AND side='lay' AND deleted_at IS NULL ORDER BY id DESC",
+                           (ids["position"],)).fetchone()[0]
+    assert "Exchange market" in browser.c.get(page).text
+    ok(submit(browser.c, page, f"/bets/legs/{lay}/market",
+              {"event": "A v B", "market": "Full-time result", "selection": "Draw"}))
+    assert count(app, "SELECT exchange_selection FROM legs WHERE id=?", lay) == "Draw"
+    assert "A v B, Full-time result: Draw" in browser.c.get(page).text
+    ok(submit(browser.c, page, f"/bets/legs/{lay}/market", {"event": "", "market": "", "selection": ""}))
+    assert count(app, "SELECT exchange_market FROM legs WHERE id=?", lay) == ""

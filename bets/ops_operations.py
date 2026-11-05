@@ -13,7 +13,7 @@ import json
 from decimal import Decimal
 from datetime import timedelta
 
-from . import brief, evidence, offer_state, readapi, exposure, issues, outcomes, plans, rewards, services, times
+from . import brief, evidence, metrics, offer_state, readapi, exposure, issues, outcomes, plans, rewards, services, times
 from .money import fmt, plain
 from .ops import OPS, TITLES, Plan, _int, _reason, _str, _when
 from .services import UserError
@@ -530,6 +530,33 @@ def op_set_position_outcomes(conn, p: dict) -> Plan:
     return plan
 
 
+# ---------------------------------------------------------------- the exchange market a lay is in
+
+def op_set_lay_market(conn, p: dict) -> Plan:
+    clear = bool(p.get("clear"))
+    event, market = ("", "") if clear else (_str(p, "event", 120) or "", _str(p, "market", 60) or "")
+    if not clear and not (event and market):
+        raise UserError("event and market: say which exchange market these lays are in, or pass clear=true")
+    lays = [(int(x["leg_id"]), str(x.get("selection") or "")[:60]) for x in p.get("lays") or []]
+    note = _reason(p) or "exchange market set by the assistant"
+    conn.execute("SAVEPOINT lay_market_preview")
+    try:
+        before = metrics.open_lay_liability(conn)
+        exposure.set_market(conn, lays, event, market, note)
+        after = metrics.open_lay_liability(conn)
+    finally:
+        conn.execute("ROLLBACK TO lay_market_preview")
+        conn.execute("RELEASE lay_market_preview")
+    positions = sorted({services.row(conn, "legs", leg_id)["position_id"] for leg_id, _ in lays})
+    what = "Clear the exchange market of" if clear else f"{event}, {market}:"
+    plan = Plan("set_lay_market", "safe_edit", f"{what} {', '.join(f'lay #{i}' + (f' on {s}' if s and not clear else '') for i, s in lays)}",
+                touches=[("position", pid) for pid in positions],
+                effects=[f"lay liability held {fmt(before)} -> {fmt(after)}; available cash moves the other way. Profit and "
+                         "each bet's own liability are unchanged."])
+    plan.apply = lambda c: exposure.set_market(c, lays, event, market, note)
+    return plan
+
+
 # ---------------------------------------------------------------- issues reviewed as false positives
 
 def op_dismiss_issue(conn, p: dict) -> Plan:
@@ -723,7 +750,7 @@ NEW = {
     "expect_reward": op_expect_reward, "reconcile_rewards": op_reconcile_rewards,
     "mark_reward_received": op_mark_reward_received, "update_expected_reward": op_update_expected_reward,
     "update_offer_progress": op_update_offer_progress,
-    "set_position_outcomes": op_set_position_outcomes, "dismiss_issue": op_dismiss_issue, "reopen_issue": op_reopen_issue,
+    "set_position_outcomes": op_set_position_outcomes, "set_lay_market": op_set_lay_market, "dismiss_issue": op_dismiss_issue, "reopen_issue": op_reopen_issue,
     "mark_alerts_notified": op_mark_alerts_notified,
     "record_unhedged_qualifier": op_record_unhedged_qualifier, "set_hedge_strategy": op_set_hedge_strategy,
     "record_funding_repayment": op_record_funding_repayment,

@@ -88,6 +88,12 @@ class LegCovers(BaseModel):
     covers: Annotated[list[Outcome], Field(min_length=1)]
 
 
+class LayInMarket(BaseModel):
+    leg_id: Annotated[int, Field(ge=1)]
+    selection: Annotated[str, Field(max_length=60, description="The selection laid, e.g. \"Draw\" or \"Home\". Same name for "
+                                                               "the same selection")] = ""
+
+
 class BackIn(BaseModel):
     stake: Money
     odds: OddsT
@@ -593,6 +599,19 @@ def register(server, upstream, limits, settings) -> dict:
         projections then use the real outcomes instead of assuming every lay loses together."""
         return await change("set_position_outcomes", {"position_id": position_id, "outcomes": outcomes,
                                                       "legs": [l.model_dump() for l in legs]}, reason, dry_run, request_id)
+
+    @tool("set_lay_market", "Say which exchange market open lays are in", EDIT)
+    async def set_lay_market(lays: Annotated[list[LayInMarket], Field(min_length=1, max_length=30)], request_id: ChangeId,
+                             event: Annotated[str, Field(max_length=120, description="The match, e.g. \"Home v Away\"")] = "",
+                             market: Annotated[str, Field(max_length=60, description="The exchange market, e.g. "
+                                                                                     "\"Full-time result\"")] = "",
+                             clear: bool = False, reason: Reason = "", dry_run: DryRun = False) -> CallToolResult:
+        """Use this when lays on one exchange sit in the same market on different selections, even across positions (a
+        double's second lays, say): give the match, the market and each lay's selection (leg ids from get_position).
+        Only one selection can win, so available cash then holds the market's worst outcome, as the exchange does. Name
+        the market from the exchange screen; never guess. clear=true removes it. Profit is unchanged."""
+        return await change("set_lay_market", {"event": event, "market": market, "clear": clear,
+                                               "lays": [l.model_dump() for l in lays]}, reason, dry_run, request_id)
 
     @tool("dismiss_issue", "Mark an issue reviewed: not a problem", EDIT)
     async def dismiss_issue(issue_key: Annotated[str, Field(min_length=3, max_length=120)], reason: Reason,

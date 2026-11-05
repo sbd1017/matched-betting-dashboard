@@ -76,6 +76,7 @@ actions answer "What should I do now?".
 | `update_offer_progress` | safe | opt-in, deposit, structured terms, required sport/market/legs, reward delay |
 | `add_record_evidence`, `list_record_evidence` | planning / read | what a screenshot showed (kind, facts); files upload at /bets/ |
 | `set_position_outcomes` | safe | give an existing multi-lay position its outcome model |
+| `set_lay_market` | safe | which exchange market open lays are in: lays on different selections net off in available cash, across positions, as the exchange does |
 | `dismiss_issue` / `acknowledge_issue`, `reopen_issue`, `list_dismissed_issues` | safe | the user confirms an issue is a false positive; it returns if its facts change |
 | `mark_alerts_notified` | planning | after telling the user about `alerts_to_send` (expiring free bets, offer deadlines, overdue rewards, hedges near kick-off, finished events, funding to return): no repeats unless it escalates |
 | `record_unhedged_qualifier` | safe (above the unhedged limit: financial) | a tiny cash qualifier deliberately not laid: bet + offer link + lifecycle + expected reward (+ the reward with `reward_credited`) in one change |

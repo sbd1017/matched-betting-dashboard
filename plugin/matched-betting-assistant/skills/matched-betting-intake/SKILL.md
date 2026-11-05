@@ -43,6 +43,8 @@ same reminder is not repeated; an alert comes back by itself if it escalates.
      `record_exchange_fill` for each matched part (different prices are fine: weighted odds are server-side),
      `cancel_exchange_order` for an unmatched remainder, `mark_exchange_fully_matched` only after seeing FULLY
      MATCHED. "Order placed" or "partially matched" is NOT fully matched: say what is still unhedged.
+   - Lays in one exchange market on different selections, even across positions: `set_lay_market` with the match,
+     market and selections as the exchange shows them, so available cash nets them as the exchange does.
 5. *Settle*: `settle_position` with `outcome` (simple bets) or `outcome_bucket` (the outcome that happened, as in
    `get_position_outcomes`). Never guess a result: if you do not know it, ask. Void, abandoned, dead heat, Rule 4,
    cash out and other unusual results go in `unusual` and wait for the user.

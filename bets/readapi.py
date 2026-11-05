@@ -65,7 +65,9 @@ def balances(conn, a: dict) -> dict:
                 "unsettled_back_stakes": m(unsettled),
                 "meaning": "total_funds = available_cash + reserved_lay_liability. The exchange's 'available' / "
                            "'balance' figure is normally available_cash; reserved_lay_liability is exposure held for "
-                           "open lay bets, not a loss. Record an exchange balance with figure='available' or 'total'."}
+                           "open lay bets, not a loss. Lays with a market set net off within that market, as the exchange does "
+                           "(set_lay_market); others count in full. Record an exchange balance with figure='available' or "
+                           "'total'."}
     if a["kind"] == "bookmaker":
         unsettled = metrics.unsettled_back_stakes(conn, a["id"])
         return {"cash_balance": m(total), "unsettled_back_stakes": m(unsettled),
@@ -106,6 +108,12 @@ def list_accounts(conn, kind: str | None = None, include_inactive: bool = False)
     return [account(conn, dict(r)) for r in conn.execute(q + " ORDER BY kind, name COLLATE NOCASE", args)]
 
 
+def _market_of(l) -> dict | None:
+    if not l["exchange_market"]:
+        return None
+    return {"event": l["exchange_event"], "market": l["exchange_market"], "selection": l["exchange_selection"]}
+
+
 def exchange_exposure(conn, account_id: int) -> dict:
     a = services.row(conn, "accounts", account_id)
     if not a or a["kind"] != "exchange":
@@ -117,8 +125,12 @@ def exchange_exposure(conn, account_id: int) -> dict:
         from decimal import Decimal
         lays.append({"leg_id": r["id"], "position_id": r["position_id"], "event": r["event"], "selection": r["selection"],
                      "event_at": t(r["event_at"]), "lay_stake": m(r["stake_pence"]), "odds": r["odds"],
-                     "liability": m(exposure.leg_liability(conn, dict(r), lay_liability(r["stake_pence"], Decimal(r["odds"]))))})
-    return {"account": a["name"], "balances": balances(conn, a), "open_lays": lays}
+                     "liability": m(exposure.leg_liability(conn, dict(r), lay_liability(r["stake_pence"], Decimal(r["odds"])))),
+                     "exchange_market": _market_of(r)})
+    markets = [{"event": h["event"], "market": h["market"], "held": m(h["hold"]), "liabilities_added_up": m(h["added_up"]),
+                "if_each_wins": {s["selection"]: m(s["if_wins"]) for s in h["selections"]}, "lays": h["leg_ids"]}
+               for h in exposure.market_holds(conn, account_id)]
+    return {"account": a["name"], "balances": balances(conn, a), "open_lays": lays, "netted_markets": markets}
 
 
 # ---------------------------------------------------------------- positions
@@ -133,7 +145,7 @@ def leg(conn, l: dict) -> dict:
     if l["side"] == "lay":
         out.update(commission_percent=commission_text(l["commission_bp"]),
                    liability=m(exposure.leg_liability(conn, l, lay_liability(l["stake_pence"], Decimal(l["odds"])))),
-                   commission_paid=m(l["commission_paid_pence"]))
+                   commission_paid=m(l["commission_paid_pence"]), exchange_market=_market_of(l))
     if l.get("deleted_at"):
         out["removed"] = True
     return out
