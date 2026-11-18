@@ -13,6 +13,7 @@ positions, expected rewards, free bets), so it can't drift out of step with the 
 """
 from __future__ import annotations
 
+import json
 from datetime import timedelta
 
 from . import services, times
@@ -207,6 +208,48 @@ def link(conn, rid: int, free_bet_ids: list[int], sync: bool = True) -> list[int
     if r["offer_id"] and done and sync:
         from . import offer_state
         offer_state.sync(conn, r["offer_id"], note=f"expected reward #{rid} received")
+    return done
+
+
+def _offer_added_by_match(conn, fid: int, rid: int) -> int | None:
+    """The offer the latest match of free bet fid to reward rid filled in (it had none before), else None."""
+    for before, after in conn.execute("SELECT before_json, after_json FROM audit_log WHERE entity = 'free_bet' AND "
+                                      "entity_id = ? AND action = 'reward_matched' ORDER BY id DESC", (fid,)):
+        after, before = json.loads(after or "{}"), json.loads(before or "{}")
+        if after.get("expected_reward_id") == rid:
+            return after.get("offer_id") if "offer_id" in after and before.get("offer_id") is None else None
+    return None
+
+
+def unlink(conn, rid: int, free_bet_ids: list[int], sync: bool = True) -> list[int]:
+    """Undo a wrong match: each free bet stays exactly as it is (available, used or expired) and only loses its link to
+    the expected reward, plus the offer link that the match filled in, when it still points at that offer. The reward's
+    status follows the free bets left (_refresh) and its offer is synced. Free bets not linked to it are skipped."""
+    r = services.row(conn, "expected_rewards", rid)
+    if not r:
+        raise UserError(f"No expected reward #{rid}")
+    done = []
+    for fid in free_bet_ids:
+        fb = services.row(conn, "free_bets", int(fid))
+        if not fb or fb["deleted_at"]:
+            raise UserError(f"No free bet #{fid}")
+        if fb["expected_reward_id"] is None:
+            continue
+        if fb["expected_reward_id"] != rid:
+            raise UserError(f"Free bet #{fid} belongs to expected reward #{fb['expected_reward_id']}, not #{rid}")
+        changes = {"expected_reward_id": None}
+        added = _offer_added_by_match(conn, fb["id"], rid)
+        if added is not None and fb["offer_id"] == added:
+            changes["offer_id"] = None
+        conn.execute("UPDATE free_bets SET " + ", ".join(f"{k} = ?" for k in changes) + ", updated_at = ? WHERE id = ?",
+                     (*changes.values(), times.now_iso(), fb["id"]))
+        services.audit(conn, "free_bet", fb["id"], "reward_unlinked", {k: fb[k] for k in changes}, changes,
+                       f"unlinked from expected reward #{rid}")
+        done.append(fb["id"])
+    _refresh(conn, rid)
+    if r["offer_id"] and done and sync:
+        from . import offer_state
+        offer_state.sync(conn, r["offer_id"], note=f"free bet(s) unlinked from expected reward #{rid}")
     return done
 
 

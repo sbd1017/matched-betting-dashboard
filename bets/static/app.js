@@ -107,6 +107,9 @@
     var parts = el.getAttribute("data-of").split("/"), a = parseFloat(parts[0]), b = parseFloat(parts[1]);
     el.style.width = b > 0 ? Math.min(100, a / b * 100) + "%" : "0";
   });
+  document.querySelectorAll(".pc-end[data-y]").forEach(function (el) {
+    el.style.top = "calc(" + parseFloat(el.getAttribute("data-y")) + "% - 26px)";
+  });
   document.querySelectorAll(".drain i[data-left]").forEach(function (el) {
     el.style.width = Math.max(0, Math.min(1, parseFloat(el.getAttribute("data-left")))) * 100 + "%";
   });

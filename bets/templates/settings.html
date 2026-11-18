@@ -28,15 +28,24 @@
   </ul>
 </section>
 <section class="panel">
-  <h2>Assistant Intake (ChatGPT)</h2>
+  <h2>Assistant Intake</h2>
   {% if assistant.enabled %}
-  <p>On — token <code>{{ assistant.id }}</code>, issued {{ local(assistant.created_at) }}. It can submit entries, read your records (if allowed below) and make the corrections its permissions allow; everything else waits for you under <a href="{{ u('/imports') }}">Imports</a>.</p>
-  <form method="post" action="{{ u('/settings/assistant/disable') }}" data-confirm="Turn off assistant access now? The token stops working immediately.">{{ csrf_field() }}<button class="btn danger">Disable assistant access</button></form>
+  <p>On. Each client has its own token. An enabled token can submit entries, read your records (if allowed below) and make the corrections its permissions allow (the permissions apply to every token); everything else waits for you under <a href="{{ u('/imports') }}">Imports</a>. The audit trail names the token that acted.</p>
   {% else %}
-  <p class="muted">Off{% if assistant.id %} (token {{ assistant.id }} disabled {{ local(assistant.disabled_at) }}){% endif %}.</p>
+  <p class="muted">Off.</p>
+  {% endif %}
+  {% if assistant.tokens %}
+  <ul class="list">
+    {% for t in assistant.tokens %}<li><code>{{ t.id }}</code> <b>{{ t.label or 'no label' }}</b> —
+      {% if t.disabled %}<span class="muted">off{% if t.disabled_at %} since {{ local(t.disabled_at) }}{% endif %}</span>
+      {% else %}on{% if t.created_at %}, issued {{ local(t.created_at) }}{% endif %}{% if t.rotated_at %}, replaced {{ local(t.rotated_at) }}{% endif %}
+      <form method="post" action="{{ u('/settings/assistant/disable') }}" data-confirm="Turn off token {{ t.id }} ({{ t.label }}) now? It stops working immediately; other tokens keep working.">{{ csrf_field() }}<input type="hidden" name="id" value="{{ t.id }}"><button class="btn danger">Disable this token</button></form>
+      {% endif %}</li>
+    {% endfor %}
+  </ul>
   {% endif %}
   <ul class="list small">
-    <li>New or replacement token (shown once): <code>scripts/assistant-token.sh rotate</code> on the Pi</li>
+    <li>Token for another client (shown once): <code>scripts/assistant-token.sh create LABEL</code> on the Pi; new secret for one: <code>scripts/assistant-token.sh rotate ID</code></li>
     <li>OpenAPI description for the GPT's Actions: <code>scripts/assistant-token.sh openapi</code></li>
   </ul>
 </section>

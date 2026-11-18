@@ -1,4 +1,5 @@
 """Assistant Intake API: a separate bearer token that can only submit candidates the user confirms."""
+import hashlib
 import json
 import logging
 import os
@@ -9,6 +10,7 @@ from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 from bets import assistant, cli, metrics, services
+from bets.db import Database
 from tests.forms import submit
 from tests.test_web import PUBLIC, seed
 
@@ -100,7 +102,7 @@ def test_token_is_stored_hashed_and_can_be_rotated_or_disabled(app, settings, ap
     assert token not in path.read_text() and token.startswith("mbai_")
     assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
     assert api.get(f"{API}/schema").status_code == 200
-    new = assistant.issue(path)                                    # rotate: the old one stops at once
+    new, _ = assistant.rotate(path)                                # rotate: the old one stops at once
     assert api.get(f"{API}/schema").status_code == 401
     assert api.get(f"{API}/schema", headers={"Authorization": f"Bearer {new}"}).status_code == 200
     assistant.disable(path)
@@ -110,7 +112,7 @@ def test_token_is_stored_hashed_and_can_be_rotated_or_disabled(app, settings, ap
 
 def test_settings_page_can_disable_it(app, browser, api):
     page = browser.get("/bets/settings").text
-    assert "Assistant Intake" in page and "Disable assistant access" in page
+    assert "Assistant Intake" in page and "Disable this token" in page
     r = submit(browser.c, "/bets/settings", "/bets/settings/assistant/disable")
     assert r.status_code == 303 and "ok=" in r.headers["location"]
     assert api.get(f"{API}/schema").status_code == 401
@@ -135,6 +137,152 @@ def test_cli_issues_rotates_and_disables(settings, monkeypatch, capsys, tmp_path
     assert tok not in printed.out + printed.err
     assert not assistant.TokenCheck(settings.assistant_file).verify(f"Bearer {tok}")
     assert assistant.status(settings.assistant_file)["enabled"] is False
+
+
+# ---------------------------------------------------------------- several tokens (one per client)
+
+def schema_status(app, token):
+    with TestClient(app, base_url="http://testserver") as c:
+        return c.get(f"{API}/schema", headers={"Authorization": f"Bearer {token}"}).status_code
+
+
+def test_two_tokens_both_work_and_are_told_apart(app, settings, token):
+    other, info = assistant.create(settings.assistant_file, "autobet")
+    assert info["label"] == "autobet" and info["id"] != token.split("_")[1]
+    assert schema_status(app, token) == 200 and schema_status(app, other) == 200
+    seed(app)
+    for tok, name in ((token, "Bet365"), (other, "Coral")):
+        with TestClient(app, base_url="http://testserver") as c:
+            r = c.post(f"{API}/candidates/account", json={"name": name, "account_type": "bookmaker"},
+                       headers={"Authorization": f"Bearer {tok}"})
+            assert r.status_code == 201
+    with app.state.db.read() as conn:
+        by = dict(conn.execute("SELECT json_extract(raw_json, '$.name'), submitted_by FROM import_candidates"))
+    assert by == {"Bet365": f"assistant:{token.split('_')[1]}", "Coral": f"assistant:{info['id']}"}
+    with pytest.raises(assistant.TokenError):                      # same label as an enabled token
+        assistant.create(settings.assistant_file, "AUTOBET")
+    with pytest.raises(assistant.TokenError):                      # several tokens: rotate/disable need an id
+        assistant.rotate(settings.assistant_file)
+    with pytest.raises(assistant.TokenError):
+        assistant.disable(settings.assistant_file)
+    with pytest.raises(assistant.TokenError):
+        assistant.disable(settings.assistant_file, "00000000")
+
+
+NOTE = {"target": "account", "target_ref": "Betfred", "text": "max stake £2.50"}
+
+
+def test_per_token_hourly_limit(app, settings, token):
+    other, _ = assistant.create(settings.assistant_file, "autobet")
+    seed(app)
+    with TestClient(app, base_url="http://testserver") as c:
+        for i in range(assistant.SUBMISSIONS_PER_HOUR):
+            r = c.post(f"{API}/candidates/note", json=NOTE | {"text": f"note {i}"},
+                       headers={"Authorization": f"Bearer {token}"})
+            assert r.status_code == 201, r.text
+        r = c.post(f"{API}/candidates/note", json=NOTE, headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 429
+        r = c.post(f"{API}/candidates/note", json=NOTE, headers={"Authorization": f"Bearer {other}"})
+        assert r.status_code == 201                                # the other client has its own limit
+
+
+def test_disabling_one_token_leaves_the_other_working(app, settings, token):
+    other, info = assistant.create(settings.assistant_file, "autobet")
+    gone = assistant.disable(settings.assistant_file, token.split("_")[1])
+    assert gone["id"] == token.split("_")[1] and gone["disabled"]
+    assert schema_status(app, token) == 401 and schema_status(app, other) == 200
+    assert assistant.disable(settings.assistant_file, token.split("_")[1]) is None     # already off
+    found = {t["id"]: t for t in assistant.status(settings.assistant_file)["tokens"]}
+    assert found[gone["id"]]["disabled"] and found[gone["id"]]["disabled_at"] and not found[info["id"]]["disabled"]
+    assert assistant.status(settings.assistant_file)["enabled"] is True
+
+
+def test_rotating_one_token_invalidates_only_its_old_secret(app, settings, token):
+    other, info = assistant.create(settings.assistant_file, "autobet")
+    tid = token.split("_")[1]
+    new, rotated = assistant.rotate(settings.assistant_file, tid)
+    assert rotated["id"] == tid and new.split("_")[1] == tid       # same id: the audit trail still matches
+    assert schema_status(app, token) == 401
+    assert schema_status(app, new) == 200 and schema_status(app, other) == 200
+    data = json.loads(settings.assistant_file.read_text())
+    assert data["version"] == 2 and [t["label"] for t in data["tokens"]] == ["ChatGPT", "autobet"]
+    assert stat.S_IMODE(os.stat(settings.assistant_file).st_mode) == 0o600
+    assistant.disable(settings.assistant_file, tid)                # a disabled token can be rotated back on
+    back, _ = assistant.rotate(settings.assistant_file, tid)
+    assert schema_status(app, back) == 200 and schema_status(app, new) == 401
+
+
+def test_old_single_token_file_is_read_as_is_and_migrated_on_next_write(app, settings):
+    tid = "1a2b3c4d"
+    token = f"mbai_{tid}_" + "x" * 43
+    path = settings.assistant_file
+    old = {"id": tid, "sha256": hashlib.sha256(token.encode()).hexdigest(), "label": "ChatGPT",
+           "created_at": "2026-10-01T09:00:00Z"}
+    path.write_text(json.dumps(old))
+    os.chmod(path, 0o600)
+    assert schema_status(app, token) == 200                        # works unchanged on first start
+    assert json.loads(path.read_text()) == old                     # not rewritten by reading
+    assert assistant.status(path)["tokens"] == [{"id": tid, "label": "ChatGPT", "created_at": "2026-10-01T09:00:00Z",
+                                                 "rotated_at": None, "disabled": False, "disabled_at": None}]
+    other, _ = assistant.create(path, "autobet")                   # the next write migrates it, same id
+    data = json.loads(path.read_text())
+    assert data["version"] == 2 and data["tokens"][0]["id"] == tid and data["tokens"][0]["sha256"] == old["sha256"]
+    assert schema_status(app, token) == 200 and schema_status(app, other) == 200
+    # an old file whose token was disabled (no hash) stays disabled
+    path.write_text(json.dumps({"id": tid, "label": "ChatGPT", "created_at": "2026-10-01T09:00:00Z",
+                                "disabled_at": "2026-10-02T09:00:00Z"}))
+    assert schema_status(app, token) == 401
+    assert assistant.status(path)["tokens"][0]["disabled"] is True and assistant.status(path)["enabled"] is False
+
+
+def test_settings_disables_one_token_and_lists_both(app, settings, browser, token):
+    other, info = assistant.create(settings.assistant_file, "autobet")
+    page = browser.get("/bets/settings").text
+    assert "autobet" in page and "ChatGPT" in page and page.count("Disable this token") == 2
+    assert token not in page and other not in page
+    r = browser.post("/bets/settings/assistant/disable", {"id": info["id"]})
+    assert r.status_code == 303 and "ok=" in r.headers["location"]
+    assert schema_status(app, other) == 401 and schema_status(app, token) == 200
+    with app.state.db.read() as conn:
+        after = conn.execute("SELECT after_json FROM audit_log WHERE entity = 'assistant_token'").fetchone()[0]
+    assert json.loads(after) == {"id": info["id"], "label": "autobet"}
+
+
+def test_cli_manages_several_tokens_and_status_never_prints_secrets(settings, monkeypatch, capsys, tmp_path):
+    monkeypatch.setenv("BETS_DATA_DIR", str(settings.data_dir))
+    cli.main(["assistant-token", "create", "-"])
+    cli.main(["assistant-token", "create", "-", "autobet"])           # adds; the first one keeps working
+    printed = capsys.readouterr().out
+    first, second = [line.split("Token: ")[1] for line in printed.splitlines() if line.startswith("Token: ")]
+    check = assistant.TokenCheck(settings.assistant_file)
+    id1, id2 = check.verify(f"Bearer {first}"), check.verify(f"Bearer {second}")
+    assert id1 and id2 and id1 != id2
+    with pytest.raises(SystemExit):
+        cli.main(["assistant-token", "rotate", "-"])                   # which one? (several tokens)
+    with pytest.raises(SystemExit):
+        cli.main(["assistant-token", "disable"])
+    cli.main(["assistant-token", "rotate", "-", id2])
+    rotated = capsys.readouterr().out.split("Token: ")[1].split()[0]
+    assert check.verify(f"Bearer {rotated}") == id2 and not check.verify(f"Bearer {second}")
+    assert check.verify(f"Bearer {first}") == id1
+    cli.main(["assistant-token", "disable", id1])
+    assert not check.verify(f"Bearer {first}") and check.verify(f"Bearer {rotated}") == id2
+    cli.main(["assistant-token", "status"])
+    out = capsys.readouterr()
+    status = out.out + out.err
+    assert id1 in status and id2 in status and "autobet" in status and "ChatGPT" in status
+    assert "DISABLED" in status and "ENABLED" in status
+    for secret in (first, second, rotated):
+        assert secret not in status and secret[len("mbai_12345678_"):] not in status
+    assert "sha256" not in status
+    for h in json.loads(settings.assistant_file.read_text())["tokens"]:
+        assert not h.get("sha256") or h["sha256"] not in status
+    db = Database(settings.db_path)
+    with db.read() as conn:
+        rows = [(r["action"], json.loads(r["after_json"])) for r in
+                conn.execute("SELECT action, after_json FROM audit_log WHERE entity = 'assistant_token' ORDER BY id")]
+    assert rows == [("issued", {"id": id1, "label": "ChatGPT"}), ("issued", {"id": id2, "label": "autobet"}),
+                    ("rotated", {"id": id2, "label": "autobet"}), ("disabled", {"id": id1, "label": "ChatGPT"})]
 
 
 def test_token_never_reaches_logs_or_audit(app, api, token, caplog):

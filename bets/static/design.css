@@ -17,7 +17,7 @@
 /* ---------- tokens ---------- */
 /* Dark by default on every device. Light is opt-in only, through the theme toggle (data-theme="light"). */
 :root{
-  --bg:#0F1012; --sunk:#18191C; --ink:#EEEFF1; --ink-2:#A4A8AE; --ink-3:#6E737A; --rule:#26282C; --rule-strong:#EEEFF1;
+  --bg:#0F1012; --sunk:#18191C; --ink:#EEEFF1; --ink-2:#A4A8AE; --ink-3:#7C8188; --rule:#26282C; --rule-strong:#EEEFF1;
   --back:#9DD3FF; --back-deep:#062540; --back-wash:#132535;      /* bookmaker / back side */
   --lay:#F8BFCD;  --lay-deep:#4B0F20; --lay-wash:#2E1820;        /* exchange / lay side */
   --gain:#45C78B; --loss:#FF6B76; --loss-wash:#2C1517; --warn:#F0A73A; --warn-wash:#2A2010;
@@ -30,7 +30,7 @@
   color-scheme:dark;
 }
 :root[data-theme="light"]{
-  --bg:#FFFFFF; --sunk:#F3F4F5; --ink:#111316; --ink-2:#53585F; --ink-3:#8E939A; --rule:#E3E5E8; --rule-strong:#111316;
+  --bg:#FFFFFF; --sunk:#F3F4F5; --ink:#111316; --ink-2:#53585F; --ink-3:#6F747B; --rule:#E3E5E8; --rule-strong:#111316;
   --back:#A6D8FF; --back-deep:#0A3152; --back-wash:#E6F3FF;
   --lay:#FAC9D4;  --lay-deep:#5A1427;  --lay-wash:#FDECEF;
   --gain:#0A7A4F; --loss:#D0303A; --loss-wash:#FDECEC; --warn:#B76E00; --warn-wash:#FFF4E0;
@@ -79,7 +79,7 @@ h1,h2,h3{margin:0}
 .btn:hover{border-color:var(--ink)}
 .btn.k,.btn.primary{background:var(--btn);color:var(--btn-ink);border-color:var(--btn)}   /* primary */
 .btn.k:hover,.btn.primary:hover{opacity:.88}
-.btn.red{background:var(--loss);border-color:var(--loss);color:#fff}                /* only for money about to be lost */
+.btn.red{background:var(--loss);border-color:var(--loss);color:var(--bg)}                /* only for money about to be lost */
 .btn.danger{color:var(--loss)}
 .btn.s,.btn.small{height:28px;padding:0 10px;font-size:12.5px}
 @media (pointer:coarse){.btn{height:40px}.btn.s,.btn.small{height:34px}}
@@ -170,6 +170,25 @@ a.row:hover h3{text-decoration:underline;text-underline-offset:3px}
 .outc b{font-weight:600}
 .cb,.cl{display:inline-block;font:500 12px var(--f-mono);padding:2px 6px;border-radius:2px;white-space:nowrap}
 .cb{background:var(--back);color:var(--back-deep)} .cl{background:var(--lay);color:var(--lay-deep)}
+/* A settled bet: the leg that won stays solid, one that lost or was void goes hollow. */
+.odd.lost,.odd.void,.cb.lost,.cb.void{background:none;color:var(--ink-2);box-shadow:inset 0 0 0 1px var(--back)}
+.odd.lay.lost,.odd.lay.void,.cl.lost,.cl.void{background:none;color:var(--ink-2);box-shadow:inset 0 0 0 1px var(--lay)}
+.odd.free.lost,.odd.free.void{background:repeating-linear-gradient(-45deg,var(--back) 0 5px,var(--back-wash) 5px 10px) top/100% 5px no-repeat}
+/* Free bets by expiry: a column per day, tokens standing on a rule, taller when worth more. */
+.expiry{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;list-style:none;margin:12px 0 0;padding:0}
+.expiry li{display:flex;flex-direction:column;min-width:0}
+.expiry .toks{display:flex;flex-direction:column;justify-content:flex-end;gap:3px;flex:1;min-height:44px;padding-bottom:3px}
+.expiry .day{border-top:1px solid var(--rule-strong);padding-top:6px;font-size:12px;color:var(--ink-3);white-space:nowrap}
+.expiry .has .day{color:var(--ink);font-weight:600}
+.expiry .today.has .day{color:var(--loss)}
+.expiry .more{font-size:12px;text-align:center;color:var(--ink-2)}
+a.tok{display:block;min-width:0;padding:9px 6px 5px;text-decoration:none}
+a.tok:hover{box-shadow:inset 0 0 0 1px var(--back-deep)}
+.tok b{display:block;font:800 18px/1 var(--f);font-stretch:var(--money-stretch)}
+.tok .s{overflow:hidden;text-overflow:ellipsis;margin-top:3px}
+.tok.m{min-height:58px} .tok.m b{font-size:22px}
+.tok.l{min-height:76px} .tok.l b{font-size:28px}
+@media (max-width:760px){a.tok{padding-inline:4px}.tok .s{font-size:10.5px}.expiry .day{font-size:11px}}
 
 /* ---------- money split ---------- */
 .total{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -251,7 +270,7 @@ tr.superseded td{color:var(--ink-3);text-decoration:line-through}
 .fields{display:grid;grid-template-columns:1fr 1fr;gap:3px}
 .fields.n3{grid-template-columns:repeat(3,1fr)}
 .fld{display:block;padding:7px 10px 8px;background:var(--sunk)}
-.fld label,.fld > span{display:block;font-size:11.5px;font-weight:600;opacity:.8}
+.fld label,.fld > span{display:block;font-size:11.5px;font-weight:600;opacity:.8;color:inherit}
 .fld input,.fld select{width:100%;min-width:0;border:0;background:none;outline:none;font:600 20px/1.2 var(--f-mono);letter-spacing:-.02em;padding:0}
 .fld.text input,.fld.text select{font:500 16px/1.4 var(--f);letter-spacing:0}
 .fld.b{background:var(--back);color:var(--back-deep)}
@@ -314,23 +333,31 @@ a.hl.gain{color:var(--gain)} a.hl.loss{color:var(--loss)}
 a.hl:hover,a.hl:focus-visible{text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:.18em;text-decoration-color:var(--ink-3)}
 .stat a.v.hl:hover,.stat a.v.hl:focus-visible{text-decoration-thickness:2px}
 .page-head .range{margin-left:auto;align-self:center}
-.pchart{display:block;width:100%;height:210px;margin-top:4px}
+.pchart{display:block;width:100%;height:256px;margin-top:4px}
 .pchart .zero{stroke:var(--rule-strong);stroke-width:1}
 .pchart .bar.pos{fill:var(--gain)} .pchart .bar.neg{fill:var(--loss)} .pchart .bar.nil{fill:var(--rule)}
 .pchart .bar.dim{opacity:.35}
 .pchart a:hover .bar{opacity:.75}
 .pchart .cum{fill:none;stroke:var(--ink);stroke-width:1.5}
+.pchart .base{stroke:var(--rule);stroke-width:1}
+.pchart .avg{stroke:var(--ink-2);stroke-width:1;stroke-dasharray:2 4}
+.pc-cap{position:absolute;left:0;font-size:12px;color:var(--ink-3);pointer-events:none}
+.pc-cap.top{top:0} .pc-cap.low{top:58%}
+.pc-end{position:absolute;right:0;top:0;padding:0 0 0 6px;background:var(--bg);font:800 22px/1 var(--f);font-stretch:var(--money-stretch);pointer-events:none}
 .pchart-x{display:grid;margin-top:6px;font:500 10.5px var(--f-mono);color:var(--ink-3)}   /* app.js sets the columns */
 .pchart-x span{text-align:center;white-space:nowrap}
-@media (max-width:760px){.pchart{height:170px}.pchart-x{font-size:9.5px}}
+@media (max-width:760px){.pchart{height:224px}.pchart-x{font-size:9.5px}.pc-end{font-size:18px}}
 .pchart-x.ends{display:flex;justify-content:space-between}
 .key{display:inline-block;width:10px;height:10px;margin:0 5px 0 0;vertical-align:-1px}
-.key.pos{background:var(--gain)} .key.neg{background:var(--loss);margin-left:6px} .key.line{height:2px;width:14px;background:var(--ink);vertical-align:3px}
+.key.pos{background:var(--gain)} .key.neg{background:var(--loss);margin-left:6px} .key.line{height:2px;width:14px;background:var(--ink);vertical-align:3px} .key.avg{height:0;width:14px;border-top:1px dotted var(--ink-2);vertical-align:3px;margin-left:6px}
 .ptable{margin-top:14px}
 tr.sel td{background:var(--sunk)}
 tfoot td{border-top:1px solid var(--rule-strong);border-bottom:0;font-weight:600}
 .cols3.tables{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--col-gap);align-items:start}
 @media (max-width:1080px){.cols3.tables{grid-template-columns:minmax(0,1fr);gap:20px}}
+.cols3.tables td:first-child{white-space:normal}
+.dbar{display:block;height:2px;margin-top:4px;background:var(--ink-3)}
+.dbar.back{background:var(--back)} .dbar.neg{background:var(--loss)}
 #winnings .kpis{margin-top:0;border-top:0;padding-top:0}
 #winnings .kpis + .note{margin:10px 0 18px}
 
@@ -545,6 +572,7 @@ fieldset.back > legend::before{background:var(--back)} fieldset.lay > legend::be
 /* ---------- settle buttons, issues, balance check ---------- */
 .settle{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end;margin:0}
 .row .ac .settle .btn{height:28px}
+@media (pointer:coarse){.row .ac .settle .btn{height:44px}}
 .check-table td{vertical-align:middle}
 .check-table input:not([type=checkbox]){max-width:150px;font-family:var(--f-mono);font-weight:500}
 .check-table tr.stale td:first-child a{color:var(--warn)}

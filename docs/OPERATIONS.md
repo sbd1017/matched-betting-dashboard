@@ -8,7 +8,7 @@ yourself; it never places bets, logs in to bookmakers or touches bookmaker/excha
 | Project | `/opt/matched-betting` |
 | Service | `matched-betting.service` (user `bets`), `127.0.0.1:8760` only |
 | Public URL | `https://example.com/bets/` (Cloudflare Tunnel → nginx → app) |
-| Data | `var/` (0700, `bets`): `bets.sqlite3`, `auth.json` (password hash), `secret.key`, `assistant.json` (assistant token hash), `backups/` |
+| Data | `var/` (0700, `bets`): `bets.sqlite3`, `auth.json` (password hash), `secret.key`, `assistant.json` (assistant token hashes), `backups/` |
 | Backups | daily `matched-betting-backup.timer` → `var/backups/bets-*.sqlite3` (newest 30) |
 
 ## Using it
@@ -90,7 +90,7 @@ recalculates every figure. Candidate types: `position`, `account`, `balance` (cu
 existing account → a visible reconciliation on confirm), `transfer`, `offer`, `free_bet`, `note`.
 
 **Assistant Intake** (`https://example.com/bets/api/assistant/`) is for a conversational assistant such as a
-custom GPT. It uses its **own token** (never your /bets login), sent as `Authorization: Bearer …`:
+custom GPT. Each client uses its **own token** (never your /bets login), sent as `Authorization: Bearer …`:
 
 | | |
 |---|---|
@@ -106,14 +106,21 @@ sent plus the app's calculations on it (it can learn whether a named account/off
 A lay sent without a stake gets the app's calculated stake. Limits: 60 submissions/hour, 100 pending,
 16 KB per request; failed tokens are limited per IP (a valid token is never locked out); nginx rate-limits too.
 
-Token (stored only as a SHA-256 hash in `var/assistant.json`; never logged, never in a URL):
+Tokens (one per client, e.g. the ChatGPT plugin and a price scanner; each labelled, stored only as a SHA-256
+hash in `var/assistant.json`; never logged, never in a URL). Each can be rotated or disabled without affecting
+the others. Permissions (Settings) apply to every token alike; the audit trail (`assistant:<id>`), submissions
+and the hourly limit are per token. `ID` may be left out while there is only one token:
 
 ```bash
-scripts/assistant-token.sh create     # first token -> ~/.config/matched-betting-assistant-token.txt (0600)
-scripts/assistant-token.sh rotate     # new token; the old one stops working immediately (--print: terminal)
-scripts/assistant-token.sh disable    # off now (also: Settings -> Disable assistant access)
-scripts/assistant-token.sh status     # on/off and the token's short id, never the token
+scripts/assistant-token.sh create [LABEL]  # add a token -> ~/.config/matched-betting-assistant-token.txt (0600)
+scripts/assistant-token.sh rotate [ID]     # new secret for that token, same id; its old secret stops at once
+                                           # (create/rotate: --print shows it in the terminal instead)
+scripts/assistant-token.sh disable [ID]    # that token off now (also: Settings -> Disable this token)
+scripts/assistant-token.sh status          # every token: id, label, dates, on/off; never a secret
 ```
+
+An older single-token `assistant.json` keeps working as it is (same id) and is rewritten in the new format the
+next time a token is created, rotated or disabled.
 
 Setting up the GPT (ChatGPT → My GPTs → Create → Configure → Actions): import the schema from
 `scripts/assistant-token.sh openapi`; Authentication → **API key**, Auth type **Bearer**, paste the token;

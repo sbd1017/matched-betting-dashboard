@@ -4,8 +4,12 @@
     python -m bets.cli set-password [username]      # prompts; nothing is echoed or logged
     python -m bets.cli init-login FILE [username]   # first install: random password written to FILE (0600)
     python -m bets.cli backup [--keep N]
-    python -m bets.cli assistant-token create|rotate FILE|-   # Assistant Intake token, shown once (- = stdout)
-    python -m bets.cli assistant-token disable|status
+    python -m bets.cli assistant-token create FILE|- [LABEL]  # add an Assistant Intake token (default label
+                                                              # ChatGPT), shown once (- = stdout); others stay
+    python -m bets.cli assistant-token rotate FILE|- [ID]     # new secret for that token (same id), shown once
+    python -m bets.cli assistant-token disable [ID]           # turn that token off now
+    python -m bets.cli assistant-token status                 # every token: id, label, dates, on/off (no secret)
+                                                              # ID may be left out when there is only one token
     python -m bets.cli assistant-openapi                      # OpenAPI description to paste into ChatGPT
     python -m bets.cli digest [--send]                        # Telegram morning summary (print or send)
     python -m bets.cli alerts [--send]                        # Telegram alerts not sent before
@@ -149,54 +153,67 @@ def backup(settings, keep: int = 14) -> Path:
     return target
 
 
-def _audit_token(settings, action: str, token_id) -> None:
+def _audit_token(settings, action: str, token: dict) -> None:
     db = Database(settings.db_path)
     db.migrate()
     with db.tx() as conn:
-        services.audit(conn, "assistant_token", None, action, None, {"id": token_id}, "command line")
+        services.audit(conn, "assistant_token", None, action, None, {"id": token["id"], "label": token["label"]},
+                       "command line")
 
 
-def assistant_token(settings, action: str, target: str | None) -> None:
+def assistant_token(settings, action: str, args: list[str]) -> None:
+    """create FILE|- [LABEL] adds a token; rotate FILE|- [ID] / disable [ID] act on one token (the ID may be left
+    out when there is only one); status lists them all, never a secret."""
     path = settings.assistant_file
-    current = assistant.status(path)
     if action == "status":
-        if current["enabled"]:
-            print(f"Assistant token {current['id']} is ENABLED (issued {current['created_at']}).")
-        elif current["id"]:
-            print(f"Assistant token {current['id']} is DISABLED (since {current['disabled_at']}).")
-        else:
+        found = assistant.tokens(path)
+        if not found:
             print("No assistant token has been issued.")
+        for t in found:
+            state = (f"DISABLED (since {t['disabled_at'] or 'unknown'})" if t["disabled"]
+                     else f"ENABLED (issued {t['created_at']}" + (f", replaced {t['rotated_at']})" if t["rotated_at"]
+                                                                   else ")"))
+            print(f"Assistant token {t['id']}  {t['label'] or '(no label)':<20} {state}")
         return
-    if action == "disable":
-        tid = assistant.disable(path)
-        if tid:
-            _audit_token(settings, "disabled", tid)
-        print(f"Assistant token {tid} disabled; it stops working immediately." if tid else "No token was enabled.")
+    if action == "disable" and len(args) <= 1:
+        try:
+            token = assistant.disable(path, args[0] if args else None)
+        except assistant.TokenError as exc:
+            sys.exit(str(exc))
+        if token:
+            _audit_token(settings, "disabled", token)
+            print(f"Assistant token {token['id']} ({token['label']}) disabled; it stops working immediately. "
+                  "Other tokens are unchanged.")
+        else:
+            print("That token was already disabled.")
         return
-    if action not in ("create", "rotate") or not target:
+    if action not in ("create", "rotate") or not args or len(args) > 2:
         sys.exit(__doc__)
-    if action == "create" and current["enabled"]:
-        sys.exit(f"Token {current['id']} is already enabled; use 'rotate' to replace it (the old one stops working).")
-    token = assistant.issue(path)
-    tid = assistant.status(path)["id"]
-    _audit_token(settings, "rotated" if current["enabled"] else "issued", tid)
+    target, ref = args[0], (args[1] if len(args) > 1 else None)
+    try:
+        token, info = assistant.create(path, ref or "ChatGPT") if action == "create" else assistant.rotate(path, ref)
+    except assistant.TokenError as exc:
+        sys.exit(str(exc))
+    tid = info["id"]
+    _audit_token(settings, "issued" if action == "create" else "rotated", info)
     origin = settings.public_origins[0] if settings.public_origins else ""
-    text = ("Matched betting — Assistant Intake token (for ChatGPT)\n"
+    text = (f"Matched betting — Assistant Intake token {tid} ({info['label']})\n"
             f"Token: {token}\n"
             f"API:   {origin}{settings.base_path}/api/assistant  (Authorization: Bearer <token>)\n\n"
             "In ChatGPT (custom GPT → Actions): Authentication → API key → Auth type: Bearer → paste the token.\n"
             "Then keep it in your password manager and DELETE this file.\n"
             "It can only submit candidates that you confirm in /bets/imports. It cannot read balances or profit.\n"
-            "Replace it: scripts/assistant-token.sh rotate · Turn it off: scripts/assistant-token.sh disable "
-            "(or Settings → Disable in the app).\n")
+            f"Replace it: scripts/assistant-token.sh rotate {tid} · Turn it off: scripts/assistant-token.sh disable "
+            f"{tid} (or Settings → Disable this token in the app).\n")
     if target == "-":
         sys.stdout.write(text)
     else:
         fd = os.open(Path(target), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w") as f:
             f.write(text)
-    sys.stderr.write(f"Assistant token {tid} issued" + (" (the previous token no longer works)" if current["enabled"]
-                                                         else "") + ".\n")
+    sys.stderr.write(f"Assistant token {tid} ({info['label']}) " +
+                     ("issued; other tokens are unchanged.\n" if action == "create"
+                      else "has a new secret; its previous secret no longer works. Other tokens are unchanged.\n"))
 
 
 def _load_currency(settings) -> None:
@@ -224,7 +241,7 @@ def main(argv=None) -> None:
     elif cmd == "init-login" and args:
         init_login(settings, args[0], args[1] if len(args) > 1 else "admin")
     elif cmd == "assistant-token" and args:
-        assistant_token(settings, args[0], args[1] if len(args) > 1 else None)
+        assistant_token(settings, args[0], args[1:])
     elif cmd == "assistant-openapi":
         origin = settings.public_origins[0] if settings.public_origins else ""
         print(json.dumps(assistant.openapi(f"{origin}{settings.base_path}/api/assistant"), indent=2))

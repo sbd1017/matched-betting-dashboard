@@ -36,7 +36,7 @@ HERE = Path(__file__).resolve().parent
 BANNER = ('<div class="demo-banner" role="note"><div class="wrap"><b>Demo</b><span>Every record here is made up. '
           'Add, edit and settle whatever you like: it all goes back to how it was at 4am (UK time).</span>'
           f'<a href="{REPO}">Source on GitHub</a></div></div>')
-HIDDEN_SETTINGS = ("Assistant Intake (ChatGPT)", "Assistant permissions", "Trusted Assistant mode", "Currency")
+HIDDEN_SETTINGS = ("Assistant Intake", "Assistant permissions", "Trusted Assistant mode", "Currency")
 REFUSED_WRITES = {"/settings/currency": "The currency is fixed in the demo",
                   "/evidence": "File uploads are switched off in the demo"}
 

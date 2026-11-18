@@ -160,6 +160,40 @@ def derive(conn, offer: dict) -> dict:
             "next_action": "Plan the qualifying bet"}
 
 
+def due_at(conn, o: dict, state: dict | None = None) -> str:
+    """When the offer's reward is due: the qualifier's time plus the offer's delay (or the trigger's default)."""
+    state = state or derive(conn, o)
+    delay = o["reward_delay_hours"] or DELAY_HOURS.get(trigger(o), DEFAULT_DELAY_HOURS)
+    return times.iso(times.parse(state["qualified_at"] or times.now_iso()) + timedelta(hours=delay))
+
+
+def waiting_redue(conn, o: dict) -> list[tuple[int, str | None, str]]:
+    """Expected rewards of the offer still waiting whose due time the offer's current delay would change:
+    [(expected_reward_id, old expected_by, new expected_by)]. Only once the qualifier is done."""
+    state = derive(conn, o)
+    if not state["qualified"]:
+        return []
+    due = due_at(conn, o, state)
+    return [(r["id"], r["expected_by"], due) for r in conn.execute(
+        "SELECT id, expected_by FROM expected_rewards WHERE offer_id = ? AND status IN ('waiting', 'partially_received')",
+        (o["id"],)) if r["expected_by"] != due]
+
+
+def redue_waiting(conn, offer_id: int, note: str = "") -> list[int]:
+    """The offer's delay (or trigger) changed: move the due time of its rewards still waiting to match. -> ids moved."""
+    o = services.row(conn, "offers", int(offer_id))
+    if not o or o["deleted_at"]:
+        return []
+    now = times.now_iso()
+    moved = []
+    for rid, old, new in waiting_redue(conn, o):
+        conn.execute("UPDATE expected_rewards SET expected_by = ?, updated_at = ? WHERE id = ?", (new, now, rid))
+        services.audit(conn, "expected_reward", rid, "due", {"expected_by": old}, {"expected_by": new},
+                       note or "the offer's reward delay changed")
+        moved.append(rid)
+    return moved
+
+
 def sync(conn, offer_id: int | None, note: str = "") -> dict | None:
     """Bring offers.status (and reward_credited / reward_used) in line with the facts, expect the reward once it is
     due, and link reward free bets that arrived to it. Idempotent. Returns the derived state."""
@@ -176,8 +210,7 @@ def sync(conn, offer_id: int | None, note: str = "") -> dict | None:
     # due (awaiting) -- or its free bets already arrived without one: expected after the fact, then matched to them
     if state["qualified"] and has_terms and (state["status"] == "awaiting_reward" or arrived) and not conn.execute(
             "SELECT 1 FROM expected_rewards WHERE offer_id = ? AND status <> 'void'", (o["id"],)).fetchone():
-        delay = o["reward_delay_hours"] or DELAY_HOURS.get(trigger(o), DEFAULT_DELAY_HOURS)
-        due = times.iso(times.parse(state["qualified_at"] or times.now_iso()) + timedelta(hours=delay))
+        due = due_at(conn, o, state)
         if arrived and state["status"] != "awaiting_reward":   # after the fact: due when it actually arrived
             due = conn.execute("SELECT min(coalesce(credited_at, created_at)) FROM free_bets WHERE offer_id = ? AND "
                                "deleted_at IS NULL AND status <> 'void'", (o["id"],)).fetchone()[0] or due

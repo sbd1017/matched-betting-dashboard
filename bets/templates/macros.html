@@ -1,5 +1,5 @@
-{% macro money(p, signed=False) -%}
-<span class="money {{ 'pos' if p and p > 0 and signed else ('neg' if p and p < 0 else '') }}">{{ fmt(p, signed=signed) }}</span>
+{% macro money(p, signed=False, expected=none) -%}
+<span class="money {{ 'pos' if p and p > 0 and signed else ('neg' if result_cls(p, expected) == 'loss' else '') }}">{{ fmt(p, signed=signed) }}</span>
 {%- endmacro %}
 
 {# Status as a small square + word (v3: no capsule badges). #}
@@ -28,7 +28,7 @@
     <p>{{ p.selection or p.market or KIND_LABELS[p.kind] }}{% if p.event_at %} · {{ local(p.event_at, '%H:%M') }}{% endif %} · {{ p.legs_text or 'No bets yet' }}</p>
   </div>
   <div class="ac">
-    {% if p.pnl is not none %}<div class="worth"><b class="{{ 'gain' if p.pnl > 0 else ('loss' if p.pnl < 0 else '') }}">{{ fmt(p.pnl, signed=True) }}</b><small>result</small></div>
+    {% if p.pnl is not none %}<div class="worth"><b class="{{ result_cls(p.pnl, p.expected_pnl_pence) }}">{{ fmt(p.pnl, signed=True) }}</b><small>result</small></div>
     {% elif p.expected_pnl_pence is not none %}<div class="worth"><b class="{{ 'gain' if p.expected_pnl_pence > 0 else ('loss' if p.expected_pnl_pence < 0 else '') }}">{{ fmt(p.expected_pnl_pence, signed=True) }}</b><small>expected</small></div>{% endif %}
   </div>
 </a>
@@ -63,10 +63,10 @@
    Needs p.legs / p.liability / p.if_back / p.if_lay (web.with_bets). #}
 {% macro bet_ladder(p) -%}
 <div class="ladder">
-  {% for l in p.legs %}<div class="odd {{ 'lay' if l.side == 'lay' else ('free' if l.free else 'back') }}"><div class="o">{{ l.odds }}</div><div class="s">{{ fmt(l.stake_pence)|replace('.00', '') if l.free else fmt(l.stake_pence) }}{{ ' free' if l.free else '' }} · {{ l.account }}</div></div>{% endfor %}
+  {% for l in p.legs %}<div class="odd {{ 'lay' if l.side == 'lay' else ('free' if l.free else 'back') }}{{ ' ' ~ l.result if l.result in ('lost', 'void') else '' }}"><div class="o">{{ l.odds }}{% if l.result in ('lost', 'void') %}<span class="sr-only"> {{ l.result }}</span>{% endif %}</div><div class="s">{{ fmt(l.stake_pence)|replace('.00', '') if l.free else fmt(l.stake_pence) }}{{ ' free' if l.free else '' }} · {{ l.account }}</div></div>{% endfor %}
   {% if p.if_back is not none %}<div class="outc">{% if p.liability %}<span>Liability <b>{{ fmt(p.liability) }}</b></span>{% endif %}
-    <span>If back wins <b class="{{ 'gain' if p.if_back > 0 else ('loss' if p.if_back < 0 else '') }}">{{ fmt(p.if_back, signed=True) }}</b></span>
-    <span>If lay wins <b class="{{ 'gain' if p.if_lay > 0 else ('loss' if p.if_lay < 0 else '') }}">{{ fmt(p.if_lay, signed=True) }}</b></span></div>{% endif %}
+    <span>If back wins <b class="{{ result_cls(p.if_back, p.expected_pnl_pence) }}">{{ fmt(p.if_back, signed=True) }}</b></span>
+    <span>If lay wins <b class="{{ result_cls(p.if_lay, p.expected_pnl_pence) }}">{{ fmt(p.if_lay, signed=True) }}</b></span></div>{% endif %}
 </div>
 {%- endmacro %}
 

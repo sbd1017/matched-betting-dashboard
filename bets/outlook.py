@@ -106,7 +106,43 @@ def _value(face: int, rate: Decimal) -> int:
     return int((Decimal(face) * rate).to_integral_value(ROUND_HALF_UP))
 
 
+STRIP_DAYS, STRIP_TOKENS_A_DAY = 7, 3
 FINISHED_AFTER_HOURS = 3        # an open position whose event started this long ago has probably finished
+
+
+def result_cls(value: int | None, expected: int | None = None) -> str:
+    """Colour for one position's figure: green if it makes money, red only if a loss is worse than the figure expected
+    when it was entered (or none was recorded). A qualifying loss that went to plan is not bad news. 1p is rounding."""
+    if not value:
+        return ""
+    if value > 0:
+        return "gain"
+    return "loss" if expected is None or value < expected - 1 else ""
+
+
+def expiry_strip(free_bets: list[dict], now=None) -> dict:
+    """The next seven days of free bet expiries, one column per UK day. Later ones, and any with no expiry recorded,
+    are only counted."""
+    today = (now or times.now()).astimezone(times.UK).date()
+    days = [{"date": today + timedelta(days=i), "tokens": [], "more": 0} for i in range(STRIP_DAYS)]
+    for i, d in enumerate(days):
+        d["label"] = "Today" if i == 0 else d["date"].strftime("%a %-d")
+    later, undated = [], []
+    for f in sorted(free_bets, key=lambda f: f["expires_at"] or ""):
+        at = times.parse(f["expires_at"])
+        if at is None:
+            undated.append(f)
+            continue
+        i = max((at.astimezone(times.UK).date() - today).days, 0)
+        if i >= STRIP_DAYS:
+            later.append(f)
+        elif len(days[i]["tokens"]) < STRIP_TOKENS_A_DAY:
+            face = f["face_value_pence"]
+            days[i]["tokens"].append({**f, "size": "l" if face >= 2500 else ("m" if face >= 1000 else "s")})
+        else:
+            days[i]["more"] += 1
+    return {"days": days, "later": len(later), "later_value": sum(f["face_value_pence"] for f in later),
+            "undated": len(undated), "last": days[-1]["label"]}
 
 
 def position_projection(conn, position_id: int) -> dict | None:
@@ -124,6 +160,7 @@ def position_projection(conn, position_id: int) -> dict | None:
     lays = sum(1 for l in legs if l["side"] == "lay")
     next_lay = exposure.after_next_lay(conn, position_id)
     return {"if_back_wins": win, "if_back_loses": lose, "locked": min(win, lose) if next_lay is None else next_lay,
+            "expected": p["expected_pnl_pence"],
             "awaiting_next_lay": next_lay is not None, "lays": lays,
             "assumes_all_lays_lose_together": lays > 1 and not exposure.configured(conn, position_id)}
 

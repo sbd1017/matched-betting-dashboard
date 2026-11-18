@@ -52,7 +52,9 @@ same reminder is not repeated; an alert comes back by itself if it escalates.
    others). When free bets arrive: `reconcile_rewards` (links unambiguous matches only) or `mark_reward_received`
    (creates only the missing tokens). Expected rewards are never profit. If an expected reward holds the wrong
    shape (e.g. the offer was corrected from 1 x £30 to 3 x £10 after it was expected), correct it with
-   `update_expected_reward`; never relink, delete or recreate free bets to make it match.
+   `update_expected_reward`; never relink, delete or recreate free bets to make it match. If a reward was matched to
+   the wrong free bet (another promotion's token of the same value), `unlink_free_bet_from_reward`, then link the right
+   one with `mark_reward_received` free_bet_ids.
 7. *Funding back*: when next actions say temporary funding "can be returned", tell the user; record the return
    only after they say they did it. Never suggest moving money that is still holding liability.
 

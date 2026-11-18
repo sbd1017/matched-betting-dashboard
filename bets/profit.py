@@ -21,6 +21,7 @@ SOURCE_LABELS = {"qualifying": "Qualifying bets", "free": "Free bets and rewards
 VIEWS = ("week", "month", "year", "all")
 WEEKS_SHOWN = 26
 MIN_SLOTS = 12              # a chart always has room for at least 12 bars
+LINE_BAND, BARS_BAND = (14, 54), (66, 98)   # where each plot sits in the chart's 0-100 height
 
 
 def _uk(at: str) -> datetime:
@@ -230,29 +231,36 @@ def winnings(conn, s: metrics.Summary | None = None) -> dict:
 
 # ---------------------------------------------------------------- chart geometry (SVG, no inline styles)
 
-def chart(rows: list[dict], cumulative: bool = True) -> dict:
-    """Bars for each period's net profit (green up, red down) on one scale with the running total."""
+def chart(rows: list[dict]) -> dict:
+    """Two plots on one x axis: the running total above, each period's net profit below (green up, red down). Each has
+    its own scale, otherwise a long history's running total squashes the bars flat."""
     n = len(rows)
-    values = [r["net"] for r in rows] + ([r["running"] for r in rows] if cumulative else []) + [0]
-    hi, lo = max(values), min(values)
-    span = (hi - lo) or 1
-    pad = 6
-    y = lambda v: round(pad + (hi - v) / span * (100 - 2 * pad), 2)
-    zero = y(0)
+
+    def scale(values, top, bottom):
+        hi, lo = max(values + [0]), min(values + [0])
+        span = (hi - lo) or 1
+        return lambda v: round(top + (hi - v) / span * (bottom - top), 2)
+
+    line_y = scale([r["running"] for r in rows], *LINE_BAND)
+    bar_y = scale([r["net"] for r in rows], *BARS_BAND)
+    zero = bar_y(0)
     slots = max(n, MIN_SLOTS)                 # short histories keep normal bar widths, newest on the right
     off = slots - n
     bars = []
     for i, r in enumerate(rows):
-        top, bottom = sorted((y(r["net"]), zero))
+        top, bottom = sorted((bar_y(r["net"]), zero))
         bars.append({"x": (off + i) * 10 + 1.5, "w": 7, "y": top, "h": max(bottom - top, 0.4 if r["net"] else 0),
                      "cls": "pos" if r["net"] > 0 else ("neg" if r["net"] < 0 else "nil"), "row": r})
-    line = " ".join(f"{(off + i) * 10 + 5},{y(r['running'])}" for i, r in enumerate(rows)) if cumulative and n else ""
+    line = " ".join(f"{(off + i) * 10 + 5},{line_y(r['running'])}" for i, r in enumerate(rows))
     for i, b in enumerate(bars):          # where the interactive marker sits: the running-total point of that period
         b["px"] = round(((off + i) * 10 + 5) / (slots * 10) * 100, 3)
-        b["py"] = y(b["row"]["running"])
+        b["py"] = line_y(b["row"]["running"])
     step = max(1, -(-n // 8))                                   # at most ~8 labels under the chart
     labels = [""] * off + [r["short"] if (n - 1 - i) % step == 0 else "" for i, r in enumerate(rows)]
-    return {"w": slots * 10, "zero": zero, "bars": bars, "line": line, "labels": labels, "n": slots,
+    done = [r["net"] for r in rows if not r.get("current")]     # a period still running would drag the average down
+    average = sum(done) // len(done) if len(done) >= 2 else None
+    return {"w": slots * 10, "zero": zero, "line_zero": line_y(0), "bars": bars, "line": line, "labels": labels, "n": slots,
+            "average": average, "average_y": bar_y(average) if average is not None else None,
             "best": max(rows, key=lambda r: r["net"]) if rows else None,
             "worst": min(rows, key=lambda r: r["net"]) if rows else None}
 

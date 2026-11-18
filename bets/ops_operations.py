@@ -412,6 +412,39 @@ def op_mark_reward_received(conn, p: dict) -> Plan:
     return plan
 
 
+def op_unlink_free_bet_from_reward(conn, p: dict) -> Plan:
+    rid = _int(p, "expected_reward_id")
+    r = services.row(conn, "expected_rewards", rid)
+    if not r:
+        raise UserError(f"No expected reward #{rid}")
+    ids = [int(x) for x in p.get("free_bet_ids") or []]
+    if not ids:
+        raise UserError("free_bet_ids: name the free bet(s) to unlink")
+    for fid in ids:
+        fb = services.row(conn, "free_bets", fid)
+        if not fb or fb["deleted_at"]:
+            raise UserError(f"No free bet #{fid}")
+        if fb["expected_reward_id"] not in (None, rid):
+            raise UserError(f"Free bet #{fid} belongs to expected reward #{fb['expected_reward_id']}, not #{rid}")
+    linked = {t["id"] for t in rewards.linked_tokens(conn, rid)}
+    todo = [f for f in dict.fromkeys(ids) if f in linked]
+    plan = Plan("unlink_free_bet_from_reward", "safe_edit",
+                f"Expected reward #{rid}: unlink free bet " + ", ".join(f"#{f}" for f in ids),
+                touches=[("expected_reward", rid)] + [("free_bet", f) for f in todo], noop=not todo,
+                effects=["the free bet stays as it is (available, used or expired); only its link to the reward goes, "
+                         "plus the offer link that matching filled in",
+                         "the reward goes back to waiting (or partly received) when fewer free bets are left; "
+                         "never money or profit"])
+    if r["status"] == "void":
+        plan.warnings.append(f"expected reward #{rid} is void")
+
+    def apply(c):
+        done = rewards.unlink(c, rid, todo)
+        return {"expected_reward_id": rid, "unlinked": done, "status": services.row(c, "expected_rewards", rid)["status"]}
+    plan.apply = apply
+    return plan
+
+
 def op_update_expected_reward(conn, p: dict) -> Plan:
     rid = _int(p, "expected_reward_id")
     r = services.row(conn, "expected_rewards", rid)
@@ -484,6 +517,13 @@ def op_update_offer_progress(conn, p: dict) -> Plan:
     plan = Plan("update_offer_progress", "safe_edit", f"Offer #{oid} ({o['title']}): " +
                 (", ".join(k.replace("_at", "").replace("_pence", "").replace("_", " ") for k in changed) or "no change"),
                 touches=[("offer", oid)], noop=not changed)
+    # a new delay (or trigger) also moves the due time of the offer's rewards still waiting
+    redue = "reward_delay_hours" in changed or "reward_trigger" in changed
+    if redue:
+        for rid, old, new in offer_state.waiting_redue(conn, {**o, **changed}):
+            plan.touches.append(("expected_reward", rid))
+            plan.effects.append(f"expected reward #{rid} (still waiting) is due {times.local(new)} instead of "
+                                f"{times.local(old) if old else 'no set time'}")
 
     def apply(c):
         if terms:
@@ -493,6 +533,8 @@ def op_update_offer_progress(conn, p: dict) -> Plan:
             c.execute("UPDATE offers SET " + ", ".join(f"{k} = ?" for k in facts) + ", updated_at = ? WHERE id = ?",
                       (*facts.values(), now, oid))
             services.audit(c, "offer", oid, "progress", {k: o[k] for k in facts}, facts, _reason(p))
+        if redue:
+            offer_state.redue_waiting(c, oid, note=_reason(p) or "the offer's reward delay changed")
         return offer_state.sync(c, oid) or rewards.lifecycle(c, services.row(c, "offers", oid))
     plan.apply = apply
     return plan
@@ -749,6 +791,7 @@ NEW = {
     "record_funding_transfer": op_record_funding_transfer, "add_record_evidence": op_add_record_evidence,
     "expect_reward": op_expect_reward, "reconcile_rewards": op_reconcile_rewards,
     "mark_reward_received": op_mark_reward_received, "update_expected_reward": op_update_expected_reward,
+    "unlink_free_bet_from_reward": op_unlink_free_bet_from_reward,
     "update_offer_progress": op_update_offer_progress,
     "set_position_outcomes": op_set_position_outcomes, "set_lay_market": op_set_lay_market, "dismiss_issue": op_dismiss_issue, "reopen_issue": op_reopen_issue,
     "mark_alerts_notified": op_mark_alerts_notified,

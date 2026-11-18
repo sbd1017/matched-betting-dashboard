@@ -542,6 +542,19 @@ def register(server, upstream, limits, settings) -> dict:
                                                      "count": count, "expires_at": expires_at, "received_at": received_at,
                                                      "notes": notes}, reason, dry_run, request_id)
 
+    @tool("unlink_free_bet_from_reward", "Unlink a free bet wrongly matched to an expected reward", EDIT)
+    async def unlink_free_bet_from_reward(expected_reward_id: RecordNo, request_id: ChangeId,
+                                          free_bet_ids: Annotated[list[int], Field(min_length=1, max_length=20,
+                                                                                   description="Free bets to unlink from "
+                                                                                               "this reward")],
+                                          reason: Reason = "", dry_run: DryRun = False) -> CallToolResult:
+        """Use this when reconcile_rewards or mark_reward_received linked the wrong free bet to an expected reward (e.g. a
+        different promotion's token of the same value). The free bet itself is unchanged (still available, used or
+        expired); it only loses the reward link and the offer link the match filled in. The reward goes back to waiting
+        if it is now short; then link the right one with mark_reward_received free_bet_ids. Never money or profit."""
+        return await change("unlink_free_bet_from_reward", {"expected_reward_id": expected_reward_id,
+                                                            "free_bet_ids": free_bet_ids}, reason, dry_run, request_id)
+
     @tool("update_expected_reward", "Correct an expected reward (how many, value each, type)", EDIT)
     async def update_expected_reward(expected_reward_id: RecordNo, request_id: ChangeId,
                                      count: Annotated[int | None, Field(ge=1, le=50)] = None,

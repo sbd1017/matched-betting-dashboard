@@ -31,22 +31,27 @@ or exchange and it never moves money.
 - Splits exchange balances into available cash, money held for open lays, and the total. Lays in the same
   exchange market net off once you say which market each one is in, the way the exchange does it.
 - Follows each offer from sign up to the reward arriving and being used, and warns you before free bets
-  expire. An offer's deadline only shows while there's still something for you to do before it.
+  expire. An offer's deadline only shows while there's still something for you to do before it. If you change
+  how long an offer's reward takes to arrive, any reward you're still waiting for moves to the new date.
+- Free bets on the dashboard sit on a seven-day expiry strip, sized by value, so you can see what runs out first.
 - An Up next list on the dashboard, split into what needs you now and what's just waiting (a bet to settle,
   a reward to arrive).
 - Tracks money borrowed from your bank account, shows how much is still owed and tells you when it's safe to
   send it back. Repayments are recorded as a bank to bank transfer, so they never touch your profit.
 - An Operations page that lists what needs doing next, and an Issues page that spots records that don't
   add up and offers a fix you can preview first. For example, if a bookmaker sends 3 x £10 free bets when
-  you'd expected 1 x £30, it can correct the expected reward without touching the free bets themselves.
+  you'd expected 1 x £30, it can correct the expected reward without touching the free bets themselves. A
+  reward matched to the wrong free bet can be unlinked, so the right one can be matched instead.
 - A Still to come figure: what your open bets have locked in, plus unused free bets and rewards you've qualified
   for. A double or acca you lay one leg at a time counts as if you'll place the next lay when a leg lands. It's
   labelled Next lay, and the real worst case stays on show.
-- Profit page, calendar, search, CSV, JSON and calendar exports, and it works fine on a phone. It's dark by
-  default, with a light theme if you prefer.
+- Profit page, calendar, search, CSV, JSON and calendar exports, and it works fine on a phone. The profit chart
+  shows the running total and each period's result on their own scales, and a loss is only shown in red when
+  it's worse than you expected. It's dark by default, with a light theme if you prefer.
 - Works in pounds by default, but you can switch to euros, dollars and a few others in Settings.
 - Optional ChatGPT connection through an MCP server with OAuth. ChatGPT can read your records and log bets
-  from your screenshots, but anything risky waits for you to confirm it.
+  from your screenshots, but anything risky waits for you to confirm it. Each assistant gets its own labelled
+  token, which you can rotate or disable on its own.
 - Optional Telegram summary each morning.
 
 Here's a Bet Builder covered with two correct score lays. It works out what you get back in every outcome:

@@ -9,12 +9,15 @@ It cannot confirm anything, settle, delete, void, reconcile directly, export, or
 profit, the ledger or history. Candidates go through imports.py like every other input and
 change nothing until the user confirms them in /bets/imports.
 
-The token (``mbai_<id>_<secret>``, 256 random bits) is stored only as a SHA-256 hash in
-``var/assistant.json`` (0600, service user). It is accepted only as ``Authorization: Bearer``
-on /bets/api/assistant/ (never in a URL, never on any other path) and never logged.
+Each client has its own token (``mbai_<id>_<secret>``, 256 random bits), labelled and revocable on its
+own, stored only as a SHA-256 hash in ``var/assistant.json`` (0600, service user). A token is accepted only
+as ``Authorization: Bearer`` on /bets/api/assistant/ (never in a URL, never on any other path) and never
+logged.
 """
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import hashlib
 import hmac
 import json
@@ -29,13 +32,26 @@ from . import imports, times
 
 PREFIX = "mbai_"
 TOKEN_RE = re.compile(r"^mbai_([0-9a-f]{8})_[A-Za-z0-9_-]{43}$")
+ID_RE = re.compile(r"^[0-9a-f]{8}$")
 SUBMISSIONS_PER_HOUR = 60
 MAX_PENDING = 100
 MAX_BODY = 16 * 1024
 STATUS = {"needs_confirmation": "pending_confirmation", "applied": "confirmed", "rejected": "rejected"}
 
 
-# ---------------------------------------------------------------- the credential
+# ---------------------------------------------------------------- the credentials
+#
+# var/assistant.json holds several tokens, one per client (e.g. the ChatGPT plugin and a price scanner):
+#   {"version": 2, "tokens": [{"id": "1a2b3c4d", "label": "ChatGPT", "sha256": "<hex>",
+#                              "created_at": "...", "disabled": false}, ...]}
+# A disabled token keeps its id, label and dates (for the audit trail) but loses its hash. Version 1 (one token:
+# {"id", "sha256", "label", "created_at"[, "disabled_at"]}) is still read as is and is rewritten as version 2
+# only when the command line or Settings next changes the file. Permissions are installation-wide: every enabled
+# token may do the same things; the audit trail, submissions and rate limits carry the token id.
+
+class TokenError(ValueError):
+    """No such token, or no id given while several exist."""
+
 
 def _digest(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
@@ -50,6 +66,17 @@ def _write(path: Path, data: dict) -> None:
     os.replace(tmp, path)
 
 
+@contextlib.contextmanager
+def _locked(path: Path):
+    """One writer at a time (the command line and Settings both change the file)."""
+    fd = os.open(Path(path).with_suffix(".lock"), os.O_WRONLY | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(fd)
+
+
 def read_state(path: Path) -> dict | None:
     try:
         data = json.loads(Path(path).read_text())
@@ -58,28 +85,120 @@ def read_state(path: Path) -> dict | None:
         return None
 
 
+def _parse(state: dict | None) -> list[dict]:
+    """Either file shape -> [{id, label, sha256 (None when disabled), created_at, disabled, ...}]."""
+    if not state:
+        return []
+    raw = state.get("tokens") if isinstance(state.get("tokens"), list) else [state] if state.get("id") else []
+    out, seen = [], set()
+    for t in raw:
+        tid = t.get("id") if isinstance(t, dict) else None
+        if not isinstance(tid, str) or not ID_RE.match(tid) or tid in seen:
+            continue
+        seen.add(tid)
+        sha = t.get("sha256") if isinstance(t.get("sha256"), str) and t.get("sha256") else None
+        disabled = bool(t.get("disabled")) or sha is None
+        out.append({"id": tid, "label": str(t.get("label") or "")[:40], "sha256": None if disabled else sha,
+                    "created_at": t.get("created_at"), "rotated_at": t.get("rotated_at"), "disabled": disabled,
+                    "disabled_at": t.get("disabled_at")})
+    return out
+
+
+def _save(path: Path, tokens: list[dict]) -> None:
+    rows = []
+    for t in tokens:
+        row = {"id": t["id"], "label": t["label"], "created_at": t["created_at"], "disabled": t["disabled"]}
+        if not t["disabled"]:
+            row["sha256"] = t["sha256"]
+        row.update({k: t[k] for k in ("rotated_at", "disabled_at") if t.get(k)})
+        rows.append(row)
+    _write(path, {"version": 2, "tokens": rows})
+
+
+def _public(t: dict) -> dict:
+    return {k: v for k, v in t.items() if k != "sha256"}
+
+
+def tokens(path: Path) -> list[dict]:
+    """Every token (enabled or not), without the hashes."""
+    return [_public(t) for t in _parse(read_state(path))]
+
+
+def _pick(tokens: list[dict], ref: str | None) -> dict:
+    if ref:
+        for t in tokens:
+            if t["id"] == ref.strip().lower():
+                return t
+        raise TokenError(f"No assistant token with id {ref!r}. See: scripts/assistant-token.sh status")
+    if len(tokens) == 1:
+        return tokens[0]
+    if not tokens:
+        raise TokenError("No assistant token has been issued.")
+    raise TokenError(f"There are {len(tokens)} assistant tokens ({', '.join(t['id'] for t in tokens)}); "
+                     "give the id of the one you mean.")
+
+
+def _clean_label(label: str) -> str:
+    label = " ".join("".join(c for c in str(label or "") if c.isprintable()).split())[:40]
+    if not label:
+        raise TokenError("Give the token a label, e.g. ChatGPT or autobet.")
+    return label
+
+
+def _secret(tid: str) -> str:
+    return f"{PREFIX}{tid}_{secrets.token_urlsafe(32)}"
+
+
+def create(path: Path, label: str = "ChatGPT") -> tuple[str, dict]:
+    """Add a token for another client (the others keep working). Returns (plaintext, token): shown once."""
+    label = _clean_label(label)
+    with _locked(path):
+        current = _parse(read_state(path))
+        for t in current:
+            if not t["disabled"] and t["label"].lower() == label.lower():
+                raise TokenError(f"Token {t['id']} ({t['label']}) is already enabled; give the new token another "
+                                 f"label, or use 'rotate {t['id']}' to replace its secret.")
+        tid = secrets.token_hex(4)
+        while any(t["id"] == tid for t in current):
+            tid = secrets.token_hex(4)
+        token = _secret(tid)
+        new = {"id": tid, "label": label, "sha256": _digest(token), "created_at": times.now_iso(),
+               "rotated_at": None, "disabled": False, "disabled_at": None}
+        _save(path, current + [new])
+    return token, _public(new)
+
+
 def issue(path: Path, label: str = "ChatGPT") -> str:
-    """Create a new token, replacing (revoking) any previous one. Returns the plaintext once."""
-    tid = secrets.token_hex(4)
-    token = f"{PREFIX}{tid}_{secrets.token_urlsafe(32)}"
-    _write(path, {"id": tid, "sha256": _digest(token), "label": label[:40], "created_at": times.now_iso()})
-    return token
+    """create() returning only the plaintext (tests, first install)."""
+    return create(path, label)[0]
 
 
-def disable(path: Path) -> str | None:
-    """Revoke the token (the hash is removed). Returns the id that was disabled, if any."""
-    state = read_state(path)
-    if not state or not state.get("sha256"):
-        return None
-    _write(path, {"id": state["id"], "label": state.get("label", ""), "created_at": state.get("created_at"),
-                  "disabled_at": times.now_iso()})
-    return state["id"]
+def rotate(path: Path, ref: str | None = None) -> tuple[str, dict]:
+    """New secret for one token (same id and label; a disabled one is enabled again). The old secret stops at once."""
+    with _locked(path):
+        current = _parse(read_state(path))
+        t = _pick(current, ref)
+        token = _secret(t["id"])
+        t.update(sha256=_digest(token), rotated_at=times.now_iso(), disabled=False, disabled_at=None)
+        _save(path, current)
+    return token, _public(t)
+
+
+def disable(path: Path, ref: str | None = None) -> dict | None:
+    """Revoke one token (its hash is removed). Returns it, or None if it was already disabled."""
+    with _locked(path):
+        current = _parse(read_state(path))
+        t = _pick(current, ref)
+        if t["disabled"]:
+            return None
+        t.update(sha256=None, disabled=True, disabled_at=times.now_iso())
+        _save(path, current)
+    return _public(t)
 
 
 def status(path: Path) -> dict:
-    state = read_state(path) or {}
-    return {"enabled": bool(state.get("sha256")), "id": state.get("id"), "label": state.get("label"),
-            "created_at": state.get("created_at"), "disabled_at": state.get("disabled_at")}
+    found = tokens(path)
+    return {"enabled": any(not t["disabled"] for t in found), "tokens": found}
 
 
 class TokenCheck:
@@ -88,18 +207,19 @@ class TokenCheck:
     def __init__(self, path: Path):
         self.path = Path(path)
         self._stamp = None
-        self._state = None
+        self._hashes: dict[str, str] = {}
 
-    def _current(self) -> dict | None:
+    def _current(self) -> dict[str, str]:
         try:
             st = self.path.stat()
             stamp = (st.st_mtime_ns, st.st_size, st.st_ino)
         except OSError:
-            self._stamp, self._state = None, None
-            return None
+            self._stamp, self._hashes = None, {}
+            return self._hashes
         if stamp != self._stamp:
-            self._stamp, self._state = stamp, read_state(self.path)
-        return self._state
+            self._stamp = stamp
+            self._hashes = {t["id"]: t["sha256"] for t in _parse(read_state(self.path)) if not t["disabled"]}
+        return self._hashes
 
     def verify(self, header: str | None) -> str | None:
         """'Bearer mbai_...' -> token id, or None."""
@@ -107,12 +227,12 @@ class TokenCheck:
             return None
         token = header[7:].strip()
         m = TOKEN_RE.match(token)
-        state = self._current()
-        if not m or not state or not state.get("sha256"):
+        if not m:
             return None
-        if not hmac.compare_digest(_digest(token), state["sha256"]) or m.group(1) != state.get("id"):
+        expected = self._current().get(m.group(1))
+        if not hmac.compare_digest(_digest(token), expected or "0" * 64) or not expected:
             return None
-        return state["id"]
+        return m.group(1)
 
 
 class Quota:

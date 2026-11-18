@@ -94,7 +94,7 @@ reader of "what has been repaid" must use REPAID_SQL. Ordinary bank → bank tra
 ## Rules for changing the data model
 
 - Every change to money goes through `bets/services.py` (audited; ledger entries superseded, never edited).
-  Audit rows carry `actor` (user / assistant:<token> / assistant+user / system) and `request_id`.
+  Audit rows carry `actor` (user / assistant:<token id> / assistant+user / system) and `request_id`.
 - Editing existing records from the assistant or new UI controls: add a named change in `bets/ops.py` (plan with
   level, dependencies and noop detection; apply only via services), a tool in `bets_mcp/maintenance.py`
   (+ `upstream.CHANGES`), and tests through the MCP layer (`tests_mcp/test_maintenance_mcp.py`).

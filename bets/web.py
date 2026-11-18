@@ -90,6 +90,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     templates = Jinja2Templates(directory=str(HERE / "templates"))
     env = templates.env
     env.globals.update(cur=money.symbol, currency_code=money.currency)
+    env.globals.update(result_cls=outlook.result_cls)
     env.globals.update(fmt=fmt, plain=plain, local=times.local, relative=times.relative, to_input=times.to_local_input,
                        commission_text=commission_text, commission_promo=comm.promo, pct=pct,
                        promo_date_input=comm.date_input, CATEGORY_LABELS=CATEGORY_LABELS, CAPITAL_LABELS=CAPITAL_LABELS,
@@ -625,7 +626,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "up_next": groups,
                 "come": outlook.still_to_come(conn),
                 "expiry": next((i for i in groups[0]["items"] if i["kind"] == "Expires"), None),
-                "free_bets": free_bets,
+                "free_bets": free_bets, "strip": outlook.expiry_strip(free_bets),
                 "offers_waiting": [dict(r) for r in conn.execute(
                     "SELECT o.*, a.name AS account FROM offers o LEFT JOIN accounts a ON a.id = o.account_id "
                     "WHERE o.deleted_at IS NULL AND o.status IN ('qualifying', 'awaiting_reward', 'reward_received', "
@@ -2365,10 +2366,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @router.post("/settings/assistant/disable")
     async def assistant_disable(request: Request):
         def fn(conn, f):
-            tid = assistant.disable(settings.assistant_file)
-            services.audit(conn, "assistant_token", None, "disabled", None, {"id": tid}, "from Settings")
-        return await write(request, fn, "Assistant access disabled. Issue a new token on the Pi to turn it back on.",
-                           "/settings")
+            try:
+                token = assistant.disable(settings.assistant_file, (f.get("id") or "").strip() or None)
+            except assistant.TokenError as exc:
+                raise UserError(str(exc)) from None
+            if token:
+                services.audit(conn, "assistant_token", None, "disabled", None,
+                               {"id": token["id"], "label": token["label"]}, "from Settings")
+        return await write(request, fn, "Assistant token disabled; any others keep working. To turn it back on, "
+                           "rotate it on the Pi.", "/settings")
 
     @router.get("/audit")
     def audit_page(request: Request):

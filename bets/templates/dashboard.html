@@ -4,8 +4,8 @@
 
 {# One bet as an odds cell: back blue (striped when it is a free bet), lay pink. #}
 {% macro odd(l) -%}
-<div class="odd {{ 'lay' if l.side == 'lay' else ('free' if l.free else 'back') }}">
-  <div class="o">{{ l.odds }}</div>
+<div class="odd {{ 'lay' if l.side == 'lay' else ('free' if l.free else 'back') }}{{ ' ' ~ l.result if l.result in ('lost', 'void') else '' }}">
+  <div class="o">{{ l.odds }}{% if l.result in ('lost', 'void') %}<span class="sr-only"> {{ l.result }}</span>{% endif %}</div>
   <div class="s">{{ fmt(l.stake_pence)|replace('.00', '') if l.free else fmt(l.stake_pence) }}{{ ' free' if l.free else '' }} · {{ l.account }}</div>
 </div>
 {%- endmacro %}
@@ -16,8 +16,8 @@
   {% if p.if_back is not none %}
   <div class="outc">
     {% if p.liability %}<span>Liability <b>{{ fmt(p.liability) }}</b></span>{% endif %}
-    <span>If back wins <b class="{{ 'gain' if p.if_back > 0 else ('loss' if p.if_back < 0 else '') }}">{{ fmt(p.if_back, signed=True) }}</b></span>
-    <span>If lay wins <b class="{{ 'gain' if p.if_lay > 0 else ('loss' if p.if_lay < 0 else '') }}">{{ fmt(p.if_lay, signed=True) }}</b></span>
+    <span>If back wins <b class="{{ result_cls(p.if_back, p.expected_pnl_pence) }}">{{ fmt(p.if_back, signed=True) }}</b></span>
+    <span>If lay wins <b class="{{ result_cls(p.if_lay, p.expected_pnl_pence) }}">{{ fmt(p.if_lay, signed=True) }}</b></span>
   </div>
   {% endif %}
 </div>
@@ -117,16 +117,22 @@
 
     <section id="free-bets-held">
       <div class="sh"><h2><a href="{{ u('/free-bets') }}">Free bets</a></h2><span class="n">{{ s.free_bets_count }} · {{ fmt(s.free_bets_value) }}</span></div>
-      {% for f in free_bets[:8] %}
-      {% set due = f.expires_at and f.expires_at <= soon %}
-      <a class="fb" href="{{ u('/quick-add') }}?kind=free_bet_{{ f.kind }}&free_bet_id={{ f.id }}&back_account={{ f.account_id }}">
-        <span class="amt">{{ fmt(f.face_value_pence)|replace('.00', '') }}</span>
-        <div><h3>{{ f.account }} <span>{{ f.kind|upper }}</span></h3>
-          <p>{{ f.notes|truncate(90) if f.notes else 'No restrictions noted' }}</p>
-          <p class="{{ 'loss' if due else '' }}">{% if f.expires_at %}Expires {{ local(f.expires_at) }}{% else %}No expiry recorded{% endif %}</p></div>
-        <span class="worth"><span class="btn s">Use</span></span>
-      </a>
-      {% else %}<div class="empty">No free bets waiting. <a href="{{ u('/free-bets') }}#add">Add one</a></div>{% endfor %}
+      {% if free_bets %}
+      <ol class="expiry" aria-label="Free bets by expiry, next 7 days">
+        {% for d in strip.days %}
+        <li class="{{ 'today' if loop.first else '' }}{{ ' has' if d.tokens else '' }}">
+          <div class="toks">
+            {% for f in d.tokens %}
+            <a class="odd free tok {{ f.size }}" href="{{ u('/quick-add') }}?kind=free_bet_{{ f.kind }}&free_bet_id={{ f.id }}&back_account={{ f.account_id }}" title="Use: {{ f.account }} {{ fmt(f.face_value_pence) }} {{ f.kind|upper }}, expires {{ local(f.expires_at) }}{{ '. ' ~ f.notes|truncate(90) if f.notes else '' }}"><b>{{ fmt(f.face_value_pence)|replace('.00', '') }}</b><div class="s">{{ f.account }}</div></a>
+            {% endfor %}
+            {% if d.more %}<a class="more" href="{{ u('/free-bets') }}">+{{ d.more }} more</a>{% endif %}
+          </div>
+          <div class="day">{{ d.label }}</div>
+        </li>
+        {% endfor %}
+      </ol>
+      {% if strip.later or strip.undated %}<p class="note">{% if strip.later %}{{ strip.later }} more after {{ strip.last }}, {{ fmt(strip.later_value) }}{% endif %}{% if strip.later and strip.undated %} · {% endif %}{% if strip.undated %}{{ strip.undated }} with no expiry recorded{% endif %}</p>{% endif %}
+      {% else %}<div class="empty">No free bets waiting. <a href="{{ u('/free-bets') }}#add">Add one</a></div>{% endif %}
     </section>
   </div>
 
@@ -199,9 +205,9 @@
     <tr class="go">
       <td class="m2">{{ local(p.settled_at, '%a %-d %b') }}</td>
       <td><a class="ev" href="{{ u('/positions/' ~ p.id) }}">{{ p.event }}</a> <span class="m3">{{ p.selection or '' }}</span></td>
-      <td>{% for l in p.legs if l.side == 'back' %}<span class="lg"><span class="cb">{{ l.odds }}</span> {{ l.account }} {{ fmt(l.stake_pence) }}{{ ' free' if l.free else '' }}</span>{% endfor %}</td>
-      <td>{% for l in p.legs if l.side == 'lay' %}<span class="lg"><span class="cl">{{ l.odds }}</span> {{ l.account }} {{ fmt(l.stake_pence) }}</span>{% endfor %}</td>
-      <td class="rt">{{ money(p.pnl, True) }}</td>
+      <td>{% for l in p.legs if l.side == 'back' %}<span class="lg"><span class="cb{{ ' ' ~ l.result if l.result in ('lost', 'void') else '' }}">{{ l.odds }}{% if l.result in ('lost', 'void') %}<span class="sr-only"> {{ l.result }}</span>{% endif %}</span> {{ l.account }} {{ fmt(l.stake_pence) }}{{ ' free' if l.free else '' }}</span>{% endfor %}</td>
+      <td>{% for l in p.legs if l.side == 'lay' %}<span class="lg"><span class="cl{{ ' ' ~ l.result if l.result in ('lost', 'void') else '' }}">{{ l.odds }}{% if l.result in ('lost', 'void') %}<span class="sr-only"> {{ l.result }}</span>{% endif %}</span> {{ l.account }} {{ fmt(l.stake_pence) }}</span>{% endfor %}</td>
+      <td class="rt">{{ money(p.pnl, True, p.expected_pnl_pence) }}</td>
     </tr>
     {% else %}<tr><td class="m2" colspan="5">Nothing settled yet.</td></tr>{% endfor %}
     </tbody>

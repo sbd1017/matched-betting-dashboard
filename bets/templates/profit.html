@@ -47,13 +47,18 @@
   {% if chart %}
   {% set c = chart %}
   <div class="pchart-wrap" data-chart="bars" tabindex="0" aria-label="Profit per {{ unit }} chart. Use the left and right arrow keys to read each {{ unit }}, Enter to open it.">
-  <svg class="pchart" viewBox="0 0 {{ c.w }} 100" preserveAspectRatio="none" role="img" aria-label="Net realised profit per {{ unit }}, with the running total">
+  <svg class="pchart" viewBox="0 0 {{ c.w }} 100" preserveAspectRatio="none" role="img" aria-label="Running total of realised profit, above net realised profit per {{ unit }}">
+    <line class="base" x1="0" x2="{{ c.w }}" y1="{{ c.line_zero }}" y2="{{ c.line_zero }}" vector-effect="non-scaling-stroke"/>
     <line class="zero" x1="0" x2="{{ c.w }}" y1="{{ c.zero }}" y2="{{ c.zero }}" vector-effect="non-scaling-stroke"/>
     {% for b in c.bars %}
     <a href="{{ u('/profit') }}?view={{ view }}{% if view == 'year' %}&amp;year={{ year }}{% endif %}&amp;p={{ b.row.key }}#detail" data-bar="{{ loop.index0 }}" tabindex="-1"><rect class="bar {{ b.cls }}{{ ' dim' if selected and selected.key != b.row.key else '' }}" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.w }}" height="{{ b.h }}"><title>{{ b.row.label }}: {{ fmt(b.row.net, signed=True) }} (running total {{ fmt(b.row.running, signed=True) }})</title></rect></a>
     {% endfor %}
+    {% if c.average is not none %}<line class="avg" x1="0" x2="{{ c.w }}" y1="{{ c.average_y }}" y2="{{ c.average_y }}" vector-effect="non-scaling-stroke"/>{% endif %}
     {% if c.line %}<polyline class="cum" points="{{ c.line }}" vector-effect="non-scaling-stroke"/>{% endif %}
   </svg>
+  <span class="pc-cap top" aria-hidden="true">Running total</span>
+  <span class="pc-cap low" aria-hidden="true">Each {{ unit }}</span>
+  {% if c.bars %}{% set end = c.bars[-1] %}<span class="pc-end {{ 'gain' if end.row.running > 0 else ('loss' if end.row.running < 0 else '') }}" data-y="{{ end.py }}" aria-hidden="true">{{ fmt(end.row.running, signed=True) }}</span>{% endif %}
   <ol class="sr-only" data-chart-points>
     {% for b in c.bars %}
     <li data-x="{{ b.px }}" data-y="{{ b.py }}" data-href="{{ u('/profit') }}?view={{ view }}{% if view == 'year' %}&amp;year={{ year }}{% endif %}&amp;p={{ b.row.key }}#detail"><b>{{ b.row.label }}{% if b.row.current %} (so far){% endif %}</b><span>Net profit {{ fmt(b.row.net, signed=True) }}</span><span>Running profit {{ fmt(b.row.running, signed=True) }}</span></li>
@@ -61,7 +66,7 @@
   </ol>
   </div>
   <div class="pchart-x" data-cols="{{ c.n }}" aria-hidden="true">{% for l in c.labels %}<span>{{ l }}</span>{% endfor %}</div>
-  <p class="note"><i class="key pos"></i>profit <i class="key neg"></i>loss per {{ unit }} · <i class="key line"></i>running total{% if c.best and c.best.net > 0 %} · best {{ c.best.label }} {{ fmt(c.best.net, signed=True) }}{% endif %}{% if c.worst and c.worst.net < 0 %} · worst {{ c.worst.label }} {{ fmt(c.worst.net, signed=True) }}{% endif %}</p>
+  <p class="note"><i class="key pos"></i>profit <i class="key neg"></i>loss per {{ unit }}{% if c.average is not none %} <i class="key avg"></i>average {{ fmt(c.average, signed=True) }} a {{ unit }}{% endif %}{% if c.best and c.best.net > 0 %} · best {{ c.best.label }} {{ fmt(c.best.net, signed=True) }}{% endif %}{% if c.worst and c.worst.net < 0 %} · worst {{ c.worst.label }} {{ fmt(c.worst.net, signed=True) }}{% endif %}</p>
   {% elif history %}
   {% set h = history %}
   {% if h.points %}
@@ -146,7 +151,8 @@
     <div class="tw"><table class="compact">
       <thead><tr><th>{{ title }}</th><th class="rt">Bets</th><th class="rt">Profit</th></tr></thead>
       <tbody>
-      {% for r in rows_ %}<tr><td>{{ type_label(r.name) if title == 'Type' else r.name }}</td><td class="rt m2">{{ r.count }}</td><td class="rt">{{ money(r.net, True) }}</td></tr>
+      {% set peak = (rows_|map(attribute='net')|map('abs')|max) if rows_ else 0 %}
+      {% for r in rows_ %}<tr><td>{{ type_label(r.name) if title == 'Type' else r.name }}<i class="dbar{{ ' neg' if r.net < 0 else (' back' if title == 'Bookmaker' else '') }}" data-of="{{ r.net|abs }}/{{ peak }}"></i></td><td class="rt m2">{{ r.count }}</td><td class="rt">{{ money(r.net, True) }}</td></tr>
       {% else %}<tr><td colspan="3" class="m2">Nothing yet.</td></tr>{% endfor %}
       </tbody>
     </table></div>

@@ -376,6 +376,48 @@ def test_mark_received_creates_only_missing_tokens(app, book, api):
     assert q1(app, "SELECT count(*) FROM free_bets WHERE expected_reward_id = ?", rid) == 3
 
 
+def test_unlink_free_bet_from_reward_undoes_a_wrong_match(app, book, api):
+    with app.state.db.tx() as conn:
+        oid = services.create_offer(conn, title="Midnite BB Thursday", account_id=book["coral"])
+        rid, _ = rewards.expect(conn, offer_id=oid, account_id=book["coral"], kind="snr", count=1, each=500)
+        wrong = services.create_free_bet(conn, account_id=book["coral"], face_value=500, kind="snr")
+        other = services.create_free_bet(conn, account_id=book["coral"], face_value=500, kind="snr")
+    p0 = summary(app).profit_lifetime
+    code, r = change(api, "mark_reward_received", "ul-recv", expected_reward_id=rid, free_bet_ids=[wrong])
+    assert r["status"] == "applied" and q1(app, "SELECT offer_id FROM free_bets WHERE id = ?", wrong) == oid
+    code, r = change(api, "unlink_free_bet_from_reward", "ul-1", expected_reward_id=rid, free_bet_ids=[wrong], dry_run=True)
+    assert r["status"] == "preview" and q1(app, "SELECT expected_reward_id FROM free_bets WHERE id = ?", wrong) == rid
+    code, r = change(api, "unlink_free_bet_from_reward", "ul-1", expected_reward_id=rid, free_bet_ids=[wrong])
+    assert r["status"] == "applied" and r["result"]["unlinked"] == [wrong] and r["result"]["status"] == "waiting"
+    assert q1(app, "SELECT expected_reward_id FROM free_bets WHERE id = ?", wrong) is None
+    assert q1(app, "SELECT offer_id FROM free_bets WHERE id = ?", wrong) is None        # the link the match added goes
+    assert q1(app, "SELECT status FROM free_bets WHERE id = ?", wrong) == "available"   # the token itself is untouched
+    assert q1(app, "SELECT received_at FROM expected_rewards WHERE id = ?", rid) is None
+    code, again = change(api, "unlink_free_bet_from_reward", "ul-2", expected_reward_id=rid, free_bet_ids=[wrong])
+    assert again["status"] == "already_done"
+    code, r = change(api, "mark_reward_received", "ul-recv-2", expected_reward_id=rid, free_bet_ids=[other])
+    assert r["status"] == "applied"
+    assert q1(app, "SELECT status FROM expected_rewards WHERE id = ?", rid) == "received"
+    assert q1(app, "SELECT count(*) FROM free_bets WHERE expected_reward_id = ?", rid) == 1
+    assert summary(app).profit_lifetime == p0
+
+
+def test_unlink_keeps_an_offer_the_free_bet_already_had_and_refuses_another_rewards_token(app, book, api):
+    with app.state.db.tx() as conn:
+        oid = services.create_offer(conn, title="Coral reward", account_id=book["coral"])
+        rid, _ = rewards.expect(conn, offer_id=oid, account_id=book["coral"], kind="snr", count=1, each=500)
+        rid2, _ = rewards.expect(conn, account_id=book["coral"], kind="snr", count=1, each=500)
+        own = services.create_free_bet(conn, account_id=book["coral"], face_value=500, kind="snr", offer_id=oid)
+        theirs = services.create_free_bet(conn, account_id=book["coral"], face_value=500, kind="snr")
+        rewards.link(conn, rid, [own])
+        rewards.link(conn, rid2, [theirs])
+    code, r = change(api, "unlink_free_bet_from_reward", "ul-own", expected_reward_id=rid, free_bet_ids=[own])
+    assert r["status"] == "applied" and q1(app, "SELECT offer_id FROM free_bets WHERE id = ?", own) == oid
+    code, r = change(api, "unlink_free_bet_from_reward", "ul-theirs", expected_reward_id=rid, free_bet_ids=[theirs])
+    assert code >= 400 or r.get("status") not in ("applied", "preview")
+    assert q1(app, "SELECT expected_reward_id FROM free_bets WHERE id = ?", theirs) == rid2
+
+
 # ================================================================ next actions and the brief
 
 def test_next_actions_order_and_operating_brief(app, book, api):

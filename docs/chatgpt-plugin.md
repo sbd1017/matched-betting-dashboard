@@ -88,7 +88,8 @@ scripts/mcp-access.sh connect-code     # code for the consent page (shown once, 
 scripts/mcp-access.sh status           # on/off, linked, connections (never secrets)
 scripts/mcp-access.sh revoke           # disconnect ChatGPT now (reconnect needs a new code)
 scripts/mcp-access.sh disable          # switch the plugin off (also revokes); 'enable' to switch on
-scripts/mcp-access.sh link-assistant   # give the plugin a fresh Assistant Intake token (rotates it)
+scripts/mcp-access.sh link-assistant [ID]  # new secret for the plugin's Assistant Intake token (rotates
+                                           # only that one; ID from assistant-token.sh status once there are several)
 sudo systemctl status matched-betting-mcp
 journalctl -u matched-betting-mcp -n 50   # tool name, type, candidate id, outcome only
 ```
@@ -122,8 +123,8 @@ After changing tools on the server: Plugins → the plugin → **Refresh**.
   matched-betting-mcp`, then `curl -s https://example.com/.well-known/oauth-protected-resource/bets/mcp`.
   The service log shows `cimd accepted/rejected url=…` for each ChatGPT client document it checks.
 * *"That code is wrong, used or expired"*: make a new code (5 wrong tries per 15 minutes per IP → wait).
-* *assistant_disabled*: `scripts/mcp-access.sh link-assistant` (the Assistant Intake token was rotated
-  or disabled elsewhere).
+* *assistant_disabled*: `scripts/mcp-access.sh link-assistant [ID]` (the plugin's Assistant Intake token was
+  rotated or disabled elsewhere).
 * *Cloudflare*: ChatGPT's requests come from OpenAI's servers. If Cloudflare bot protection or a WAF rule
   challenges them, connecting fails before reaching the Pi. Allow `/bets/mcp*` and the two
   `/.well-known/oauth-*/bets/mcp` paths in that rule. Nothing else needs changing; no router ports.

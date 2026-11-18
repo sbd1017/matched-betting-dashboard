@@ -12,16 +12,16 @@
 <div class="status n3">
   <div class="stat hero">
     {% if pnl is not none %}
-    <span class="k">Actual result</span><span class="v {{ 'gain' if pnl > 0 else ('loss' if pnl < 0 else '') }}">{{ fmt(pnl, signed=True) }}</span>
+    <span class="k">Actual result</span><span class="v {{ result_cls(pnl, pos.expected_pnl_pence) }}">{{ fmt(pnl, signed=True) }}</span>
     <span class="s">{{ pos.status|capitalize }}{% if pos.settled_at %} {{ local(pos.settled_at) }}{% endif %}{% if pos.expected_pnl_pence is not none %} · expected {{ fmt(pos.expected_pnl_pence, signed=True) }}{% endif %}</span>
     {% else %}
     <span class="k">{{ 'Open · unhedged by design' if hedging == 'intentionally_unhedged' else ('Incomplete' if legs|length and (legs|selectattr('side', 'equalto', 'back')|list|length == 0 or legs|selectattr('side', 'equalto', 'lay')|list|length == 0) else 'Open') }}</span>
-    <span class="v {{ 'gain' if (outcome[0] or 0) > 0 and (outcome[1] or 0) > 0 else ('loss' if outcome[0] is not none and [outcome[0], outcome[1]]|min < 0 else '') }}">{{ fmt([outcome[0], outcome[1]]|min, signed=True) if outcome[0] is not none else '—' }}</span>
+    <span class="v {{ result_cls([outcome[0], outcome[1]]|min, pos.expected_pnl_pence) if outcome[0] is not none else '' }}">{{ fmt([outcome[0], outcome[1]]|min, signed=True) if outcome[0] is not none else '—' }}</span>
     <span class="s">the worst covered outcome · {% if pos.expected_pnl_pence is not none %}expected {{ fmt(pos.expected_pnl_pence, signed=True) }} when entered{% else %}no expected figure{% endif %}</span>
     {% endif %}
   </div>
-  <div class="stat"><span class="k">If the back wins{% if pos.multi_outcome %} (worst case){% endif %}</span><span class="v {{ 'gain' if (outcome[0] or 0) > 0 else ('loss' if (outcome[0] or 0) < 0 else '') }}">{{ fmt(outcome[0], signed=True) if outcome[0] is not none else '—' }}</span><span class="s">{{ pos.selection or 'the selection' }} wins</span></div>
-  <div class="stat"><span class="k">If the back loses</span><span class="v {{ 'gain' if (outcome[1] or 0) > 0 else ('loss' if (outcome[1] or 0) < 0 else '') }}">{{ fmt(outcome[1], signed=True) if outcome[1] is not none else '—' }}</span><span class="s">anything else happens</span></div>
+  <div class="stat"><span class="k">If the back wins{% if pos.multi_outcome %} (worst case){% endif %}</span><span class="v {{ result_cls(outcome[0], pos.expected_pnl_pence) }}">{{ fmt(outcome[0], signed=True) if outcome[0] is not none else '—' }}</span><span class="s">{{ pos.selection or 'the selection' }} wins</span></div>
+  <div class="stat"><span class="k">If the back loses</span><span class="v {{ result_cls(outcome[1], pos.expected_pnl_pence) }}">{{ fmt(outcome[1], signed=True) if outcome[1] is not none else '—' }}</span><span class="s">anything else happens</span></div>
 </div>
 
 {% if plan_of %}<p class="small">From <a href="{{ u('/plans/' ~ plan_of[0]) }}">bet plan #{{ plan_of[0] }}</a>.</p>{% endif %}
@@ -37,8 +37,8 @@
   {% if pos.multi_outcome %}<p class="note">These bets cover different selections. Settle each bet below using its actual result.</p>{% else %}
   <form method="post" action="{{ u('/positions/' ~ pos.id ~ '/settle') }}" class="settle-big" data-confirm="Settle every bet in this position?">
     {{ csrf_field() }}
-    <button class="btn" name="outcome" value="back_won"><span>Back selection won</span><b class="{{ 'gain' if (outcome[0] or 0) > 0 else ('loss' if (outcome[0] or 0) < 0 else '') }}">{{ fmt(outcome[0], signed=True) if outcome[0] is not none else '' }}</b></button>
-    <button class="btn" name="outcome" value="back_lost"><span>Back selection lost</span><b class="{{ 'gain' if (outcome[1] or 0) > 0 else ('loss' if (outcome[1] or 0) < 0 else '') }}">{{ fmt(outcome[1], signed=True) if outcome[1] is not none else '' }}</b></button>
+    <button class="btn" name="outcome" value="back_won"><span>Back selection won</span><b class="{{ result_cls(outcome[0], pos.expected_pnl_pence) }}">{{ fmt(outcome[0], signed=True) if outcome[0] is not none else '' }}</b></button>
+    <button class="btn" name="outcome" value="back_lost"><span>Back selection lost</span><b class="{{ result_cls(outcome[1], pos.expected_pnl_pence) }}">{{ fmt(outcome[1], signed=True) if outcome[1] is not none else '' }}</b></button>
     <button class="btn" name="outcome" value="void"><span>Void</span><b class="m2">stakes back</b></button>
   </form>
   {% endif %}
@@ -51,7 +51,7 @@
   {% for l in legs %}
   <article class="leg {{ l.side }}">
     <div class="leg-head">
-      <div class="odd {{ 'lay' if l.side == 'lay' else ('free' if l.free_bet_id else 'back') }}"><div class="o">{{ l.odds }}</div><div class="s">{{ fmt(l.stake_pence) }}{{ ' free' if l.free_bet_id else '' }}</div></div>
+      <div class="odd {{ 'lay' if l.side == 'lay' else ('free' if l.free_bet_id else 'back') }}{{ ' ' ~ l.result if l.result in ('lost', 'void') else '' }}"><div class="o">{{ l.odds }}{% if l.result in ('lost', 'void') %}<span class="sr-only"> {{ l.result }}</span>{% endif %}</div><div class="s">{{ fmt(l.stake_pence) }}{{ ' free' if l.free_bet_id else '' }}</div></div>
       <div class="leg-info">
         <h3>{{ l.side|capitalize }} · {{ l.account }}{% if l.free_bet_id %} {{ pill('Free bet ' ~ (l.free_bet_kind or '')|upper, 'info') }}{% endif %}</h3>
         <p>{% if l.side == 'lay' %}Liability {{ fmt(l.liability) }} · commission {{ commission_text(l.commission_bp) }} · {% if l.exchange_market %}{{ l.exchange_event }}, {{ l.exchange_market }}: {{ l.exchange_selection }} · {% endif %}{% endif %}placed {{ local(l.placed_at) }}{% if l.external_ref %} · ref {{ l.external_ref }}{% endif %} · {{ l.source }}</p>
