@@ -148,7 +148,7 @@ class Provider:
 
 # ---------------------------------------------------------------- consent page
 
-STYLE = ("body{font:16px/1.5 system-ui,sans-serif;background:#0f1216;color:#e6e9ee;margin:0;padding:24px 16px}"
+STYLE = (":root{color-scheme:dark}body{font:16px/1.5 system-ui,sans-serif;background:#0f1216;color:#e6e9ee;margin:0;padding:24px 16px}"
          "main{max-width:440px;margin:0 auto}h1{font-size:1.3rem}ul{padding-left:20px}"
          ".box{background:#171b21;border:1px solid #2a313b;border-radius:12px;padding:16px;margin:16px 0}"
          "label{display:block;margin:12px 0 4px}input{width:100%;box-sizing:border-box;font:inherit;padding:10px;"
@@ -162,6 +162,7 @@ STYLE_HASH = base64.b64encode(hashlib.sha256(STYLE.encode()).digest()).decode()
 def _page(body: str, status: int = 200, form_targets: str = "") -> HTMLResponse:
     resp = HTMLResponse(f"<!doctype html><html lang=\"en-GB\"><head><meta charset=\"utf-8\">"
                         f"<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+                        f"<meta name=\"color-scheme\" content=\"dark\"><meta name=\"theme-color\" content=\"#0f1216\">"
                         f"<title>Connect Matched Betting Assistant</title><style>{STYLE}</style></head>"
                         f"<body><main>{body}</main></body></html>", status_code=status)
     resp.headers["Content-Security-Policy"] = (f"default-src 'none'; style-src 'sha256-{STYLE_HASH}'; "

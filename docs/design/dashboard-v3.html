@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0f1012">
 <!-- Approved v3 reference mockup (sample data). -->
 </head>
 <body>
@@ -15,29 +17,15 @@
    (in order) and the right column is where your money is. Everything else sits further down.
    No cards: rules and space only. Bookmaker side = exchange back blue, exchange side = lay pink. */
 :root{
-  --bg:#FFFFFF; --sunk:#F3F4F5; --ink:#111316; --ink-2:#53585F; --ink-3:#8E939A; --rule:#E3E5E8; --rule-strong:#111316;
-  --back:#A6D8FF; --back-deep:#0A3152; --back-wash:#E6F3FF;
-  --lay:#FAC9D4;  --lay-deep:#5A1427;  --lay-wash:#FDECEF;
-  --gain:#0A7A4F; --loss:#D0303A; --loss-wash:#FDECEC; --warn:#B76E00; --warn-wash:#FFF4E0;
-  --btn:#111316; --btn-ink:#FFFFFF; --scrim:rgba(17,19,22,.35);
-  --f:"Archivo", "Helvetica Neue", Arial, sans-serif;
-  --f-mono:"IBM Plex Mono", ui-monospace, Menlo, monospace;
-}
-@media (prefers-color-scheme: dark){
-  :root:not([data-theme="light"]){
-    --bg:#0F1012; --sunk:#18191C; --ink:#EEEFF1; --ink-2:#A4A8AE; --ink-3:#6E737A; --rule:#26282C; --rule-strong:#EEEFF1;
-    --back:#9DD3FF; --back-deep:#062540; --back-wash:#132535;
-    --lay:#F8BFCD;  --lay-deep:#4B0F20; --lay-wash:#2E1820;
-    --gain:#45C78B; --loss:#FF6B76; --loss-wash:#2C1517; --warn:#F0A73A; --warn-wash:#2A2010;
-    --btn:#EEEFF1; --btn-ink:#0F1012; --scrim:rgba(0,0,0,.55); color-scheme:dark;
-  }
-}
-:root[data-theme="dark"]{
+  /* Dark only, on every device, whatever the system setting. There is no light theme. */
   --bg:#0F1012; --sunk:#18191C; --ink:#EEEFF1; --ink-2:#A4A8AE; --ink-3:#6E737A; --rule:#26282C; --rule-strong:#EEEFF1;
   --back:#9DD3FF; --back-deep:#062540; --back-wash:#132535;
   --lay:#F8BFCD;  --lay-deep:#4B0F20; --lay-wash:#2E1820;
   --gain:#45C78B; --loss:#FF6B76; --loss-wash:#2C1517; --warn:#F0A73A; --warn-wash:#2A2010;
-  --btn:#EEEFF1; --btn-ink:#0F1012; --scrim:rgba(0,0,0,.55); color-scheme:dark;
+  --btn:#EEEFF1; --btn-ink:#0F1012; --scrim:rgba(0,0,0,.55);
+  --f:"Archivo", "Helvetica Neue", Arial, sans-serif;
+  --f-mono:"IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme:dark;
 }
 *{box-sizing:border-box}
 html,body{background:var(--bg)}
@@ -118,9 +106,7 @@ kbd{font:500 10.5px var(--f-mono);color:var(--ink-3)}
 .kind{display:flex;flex-direction:column;gap:2px}
 .kind b{font:600 11.5px/1 var(--f);letter-spacing:.02em}
 .kind span{font:500 13px var(--f-mono)}
-.k-red b,.k-red span{color:var(--loss)} .k-amb b,.k-amb span{color:var(--warn)} .k-ink b{color:var(--ink-2)} .k-blue b{color:var(--back-deep)}
-:root[data-theme="dark"] .k-blue b{color:var(--back)}
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .k-blue b{color:var(--back)}}
+.k-red b,.k-red span{color:var(--loss)} .k-amb b,.k-amb span{color:var(--warn)} .k-ink b{color:var(--ink-2)} .k-blue b{color:var(--back)}
 .row h3{margin:0;font:600 15px/1.3 var(--f)}
 .row p{margin:3px 0 0;color:var(--ink-2);font-size:13px}
 .row .ac{display:flex;align-items:center;gap:12px;justify-content:flex-end}
@@ -285,7 +271,6 @@ td small{display:block;color:var(--ink-3);font-size:11.5px}
     <div class="r">
       <div class="clock" id="clock"></div>
       <button class="ib" id="search" aria-label="Search" title="Search (⌘K)"></button>
-      <button class="ib" id="theme" aria-label="Switch theme"></button>
       <button class="btn calc-btn" id="calcbtn">Calculator <kbd>C</kbd></button>
       <div class="newwrap">
         <button class="btn k" id="newbtn" aria-haspopup="true" aria-expanded="false">New</button>
@@ -644,13 +629,6 @@ document.addEventListener('keydown',e=>{
   if(!typing&&!e.metaKey&&!e.ctrlKey&&e.key.toLowerCase()==='c'){e.preventDefault();openCalc();}
 });
 
-/* theme */
-const order=['auto','light','dark']; let th='auto';
-try{th=localStorage.getItem('mb-theme')||'auto';}catch(e){}
-function applyTheme(){const r=document.documentElement; if(th==='auto')r.removeAttribute('data-theme'); else r.setAttribute('data-theme',th);
-  $('#theme').innerHTML=ic(I[th==='auto'?'auto':th==='light'?'sun':'moon'],17); $('#theme').title='Theme: '+th;}
-$('#theme').addEventListener('click',()=>{th=order[(order.indexOf(th)+1)%3];try{localStorage.setItem('mb-theme',th);}catch(e){}applyTheme();drawChart();});
-applyTheme();
 })();
 </script>
 

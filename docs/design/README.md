@@ -33,19 +33,20 @@ Every page under https://example.com/bets/ uses this design. The stylesheet is
 
 ## 3. Tokens
 
-| Token | Light | Dark | Use |
-|---|---|---|---|
-| `--bg` | #FFFFFF | #0F1012 | page |
-| `--sunk` | #F3F4F5 | #18191C | inputs, hover |
-| `--ink` / `--ink-2` / `--ink-3` | #111316 / #53585F / #8E939A | #EEEFF1 / #A4A8AE / #6E737A | text levels |
-| `--rule` / `--rule-strong` | #E3E5E8 / #111316 | #26282C / #EEEFF1 | dividers / group heading line |
-| `--back` / `--back-deep` / `--back-wash` | #A6D8FF / #0A3152 / #E6F3FF | #9DD3FF / #062540 / #132535 | back side fill / text on fill / stripe |
-| `--lay` / `--lay-deep` / `--lay-wash` | #FAC9D4 / #5A1427 / #FDECEF | #F8BFCD / #4B0F20 / #2E1820 | lay side |
-| `--gain` `--loss` `--warn` | #0A7A4F #D0303A #B76E00 | #45C78B #FF6B76 #F0A73A | semantic |
-| `--loss-wash` `--warn-wash` | #FDECEC #FFF4E0 | #2C1517 #2A2010 | tinted backgrounds for alerts |
+| Token | Value | Use |
+|---|---|---|
+| `--bg` | #0F1012 | page |
+| `--sunk` | #18191C | inputs, hover |
+| `--ink` / `--ink-2` / `--ink-3` | #EEEFF1 / #A4A8AE / #7C8188 | text levels |
+| `--rule` / `--rule-strong` | #26282C / #EEEFF1 | dividers / group heading line |
+| `--back` / `--back-deep` / `--back-wash` | #9DD3FF / #062540 / #132535 | back side fill / text on fill / stripe |
+| `--lay` / `--lay-deep` / `--lay-wash` | #F8BFCD / #4B0F20 / #2E1820 | lay side |
+| `--gain` `--loss` `--warn` | #45C78B #FF6B76 #F0A73A | semantic |
+| `--loss-wash` `--warn-wash` | #2C1517 #2A2010 | tinted backgrounds for alerts |
 
-Theme: dark by default on every device, whatever the system setting. Light is opt-in: `data-theme="light"`
-on `<html>` (toggle in `app.js`, remembered in `localStorage`). `<meta name="color-scheme">` in `base.html` is `dark`.
+Theme: dark only, on every device, whatever the system setting. There is no light theme and no theme switch:
+one palette in `:root`, `color-scheme:dark`, and `<meta name="color-scheme" content="dark">` plus a dark
+`theme-color` in `base.html`. Don't add a light theme or a `prefers-color-scheme` rule.
 
 ## 4. Type
 
@@ -78,7 +79,7 @@ font. Upgrading means replacing the files with the same names; nothing else chan
 ## 5. Layout
 
 - **Shell:** sticky top bar (`.bar`): wordmark (`.wm`, the blue/pink split square), text nav with
-  counts as `<sup>` (`.hot` for counts that need attention), then clock, theme, Calculator (key C)
+  counts as `<sup>` (`.hot` for counts that need attention), then clock, Calculator (key C)
   and the primary **New** / Quick Add button. No sidebar and no bottom tab bar. On phones the
   nav wraps to its own scrolling row.
 - **Content:** `.wrap` (max 1440px, 32px gutters, 16px on phones). Sections are `<section>` with a top
@@ -177,5 +178,5 @@ via `class`) are allowed.
 - [ ] Back is blue, lay is pink, gains green, losses red; no other colours.
 - [ ] No inline styles or scripts; any new JS lives in `app.js`.
 - [ ] Works at 390px wide with no sideways scroll (tables scroll inside `.tw`).
-- [ ] Looks right in light and dark.
+- [ ] Looks right in the dark theme (the only one).
 - [ ] Every figure comes from the services and matches the ledger.

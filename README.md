@@ -47,7 +47,7 @@ or exchange and it never moves money.
   labelled Next lay, and the real worst case stays on show.
 - Profit page, calendar, search, CSV, JSON and calendar exports, and it works fine on a phone. The profit chart
   shows the running total and each period's result on their own scales, and a loss is only shown in red when
-  it's worse than you expected. It's dark by default, with a light theme if you prefer.
+  it's worse than you expected. It's dark, always.
 - Works in pounds by default, but you can switch to euros, dollars and a few others in Settings.
 - Optional ChatGPT connection through an MCP server with OAuth. ChatGPT can read your records and log bets
   from your screenshots, but anything risky waits for you to confirm it. Each assistant gets its own labelled

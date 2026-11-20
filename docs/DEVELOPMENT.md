@@ -24,7 +24,7 @@ The short version of the design (details in the README):
 - One family, Archivo: condensed and heavy for money, normal width for text. IBM Plex Mono for odds.
 - Sentence-case labels, no uppercase eyebrows, no badge-count pills, no icon on every nav item,
   no gradients or glows, no emoji.
-- Light and dark themes both supported through tokens.
+- Dark only, on every device. No light theme, no theme switch, no `prefers-color-scheme` rules.
 
 ## Hard constraints (CSP)
 
@@ -113,7 +113,7 @@ git worktree, symlink `.venv` and `.venv-mcp` from the main checkout first (they
 
 - [x] Design system written (`docs/design/`, `bets/static/design.css`).
 - [x] Fonts self-hosted in `bets/static/fonts/` (Archivo variable + IBM Plex Mono, OFL, latin subset).
-- [x] `base.html` uses `design.css` (top bar, theme toggle: `static/theme.js` + `app.js`); `design.css`,
+- [x] `base.html` uses `design.css` (top bar; dark only, no theme toggle); `design.css`,
       the fonts and `icon.svg` are in the login-free `public` set in `bets/web.py`.
 - [x] Dashboard rebuilt on the v3 patterns (headline numbers, Up next with inline positions, Your money,
       Free bets, Offers, compact Recently settled).

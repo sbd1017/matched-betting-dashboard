@@ -114,23 +114,6 @@
     el.style.width = Math.max(0, Math.min(1, parseFloat(el.getAttribute("data-left")))) * 100 + "%";
   });
 
-  // Theme toggle (dark <-> light). Dark is the default; theme.js applies a saved "light" before paint.
-  var themes = ["dark", "light"];
-  function savedTheme() { try { return window.localStorage.getItem("mb-theme") === "light" ? "light" : "dark"; } catch (e) { return "dark"; } }
-  function applyTheme(t) {
-    if (t === "light") document.documentElement.setAttribute("data-theme", "light");
-    else document.documentElement.removeAttribute("data-theme");
-    document.querySelectorAll("[data-theme-toggle]").forEach(function (b) { b.title = "Theme: " + t; });
-  }
-  applyTheme(savedTheme());
-  document.querySelectorAll("[data-theme-toggle]").forEach(function (btn) {
-    btn.addEventListener("click", function () {
-      var next = themes[(themes.indexOf(savedTheme()) + 1) % themes.length];
-      try { window.localStorage.setItem("mb-theme", next); } catch (e) { /* not remembered */ }
-      applyTheme(next);
-    });
-  });
-
   // Calculator drawer: open with the toolbar button or C, close with Esc / the scrim. Search: Cmd/Ctrl+K or /.
   var lastFocus = null;
   function drawer(id, open) {

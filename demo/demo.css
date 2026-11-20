@@ -1,4 +1,4 @@
-/* Demo banner (demo/serve.py adds it to every page). Uses the app's own tokens, so it follows light and dark. */
+/* Demo banner (demo/serve.py adds it to every page). Uses the app's own (dark) tokens. */
 .demo-banner{background:var(--warn-wash);color:var(--ink);border-bottom:1px solid var(--rule);font-size:13px;line-height:1.4}
 .demo-banner .wrap{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;padding-block:8px}
 .demo-banner b{font-weight:700;text-transform:uppercase;letter-spacing:.06em;font-size:11px;color:var(--warn)}
