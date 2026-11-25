@@ -90,3 +90,48 @@ def test_dashboard_shows_free_bets_by_expiry_and_still_links_to_using_them(app, 
     assert 'class="expiry"' in page and "odd free tok s" in page
     assert "1 more after" in page and "£25.00" in page
     assert f"free_bet_id={fid}" not in page.split('id="free-bets-held"')[1].split("</section>")[0]
+
+
+def test_betting_tool_link_is_off_unless_configured(browser):
+    assert 'class="ib bot"' not in browser.get("/bets/").text
+
+
+def test_betting_tool_link_shows_as_a_small_header_icon_when_configured(tmp_path):
+    from fastapi.testclient import TestClient
+    from bets.web import create_app
+    from tests.conftest import Browser, make_settings
+    app = create_app(make_settings(tmp_path, autobet_url="https://autobet.example.com"))
+    with TestClient(app, base_url="http://testserver") as c:
+        b = Browser(c)
+        b.login()
+        page = b.get("/bets/").text
+    link = page.split('class="ib bot"')[1].split("</a>")[0]
+    assert 'href="https://autobet.example.com/"' in link and 'rel="noopener noreferrer"' in link
+
+
+def test_betting_tool_link_only_accepts_an_https_origin():
+    from bets.config import autobet_url
+    assert autobet_url(" https://autobet.example.com/ ") == "https://autobet.example.com"
+    for bad in ("http://autobet.example.com", "https://autobet.example.com/x", "javascript:alert(1)",
+                "https://user@autobet.example.com", "https://autobet.example.com?x=1", ""):
+        assert autobet_url(bad) == ""
+
+
+def test_where_it_came_from_shows_the_top_five_and_hides_the_rest_behind_show_all(app, browser):
+    with app.state.db.tx() as conn:
+        a = accounts(conn)
+        for i in range(7):
+            oid = services.create_offer(conn, title=f"Offer {i}", account_id=a["betfred"])
+            pid = services.create_position(conn, event=f"Team {i} v Other", selection=f"Team {i}", offer_id=oid, legs=[
+                {"account_id": a["betfred"], "side": "back", "stake_pence": 1000, "odds": "4.0",
+                 "placed_at": "2026-10-01T10:00:00Z"},
+                {"account_id": a["smarkets"], "side": "lay", "stake_pence": 957, "odds": "4.2",
+                 "placed_at": "2026-10-01T10:00:00Z"}])
+            services.quick_settle(conn, pid, "back_lost", at="2026-10-02T10:00:00Z")
+    page = browser.get("/bets/profit").text
+    offers = page.split("<th>Offer</th>")[1].split("</table>")[0]
+    shown, rest = offers.split('<tbody id="from-offer" hidden>')
+    assert shown.count("<tr>") == 5 and rest.count("<tr>") == 2
+    after = page.split("<th>Offer</th>")[1].split("</section>")[0]
+    assert 'data-expand="from-offer"' in after and ">Show all 7</button>" in after
+    assert 'id="from-bookmaker"' not in page                               # one bookmaker: nothing to hide

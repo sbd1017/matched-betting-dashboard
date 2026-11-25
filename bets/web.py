@@ -91,7 +91,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     env = templates.env
     env.globals.update(cur=money.symbol, currency_code=money.currency)
     env.globals.update(result_cls=outlook.result_cls, expiry_text=freebet_state.expiry_text,
-                       usable_text=freebet_state.usable_text)
+                       usable_text=freebet_state.usable_text, autobet_url=settings.autobet_url)
     env.globals.update(fmt=fmt, plain=plain, local=times.local, relative=times.relative, to_input=times.to_local_input,
                        commission_text=commission_text, commission_promo=comm.promo, pct=pct,
                        promo_date_input=comm.date_input, CATEGORY_LABELS=CATEGORY_LABELS, CAPITAL_LABELS=CAPITAL_LABELS,

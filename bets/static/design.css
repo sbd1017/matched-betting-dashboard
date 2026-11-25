@@ -79,6 +79,8 @@ h1,h2,h3{margin:0}
 .btn kbd{font:500 10.5px var(--f-mono);opacity:.6}
 .ib{width:34px;height:34px;display:grid;place-items:center;border:0;border-radius:var(--r);background:none;color:var(--ink-2)}
 .ib:hover{background:var(--sunk);color:var(--ink)}
+.ib.bot{color:var(--ink-3)}
+.ib.bot:hover{color:var(--ink)}
 button.link{border:0;background:none;padding:0;color:var(--ink-2);text-decoration:underline;text-underline-offset:3px}
 kbd{font:500 10.5px var(--f-mono);color:var(--ink-3)}
 .menuwrap{position:relative}
@@ -347,6 +349,7 @@ tfoot td{border-top:1px solid var(--rule-strong);border-bottom:0;font-weight:600
 .cols3.tables{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--col-gap);align-items:start}
 @media (max-width:1080px){.cols3.tables{grid-template-columns:minmax(0,1fr);gap:20px}}
 .cols3.tables td:first-child{white-space:normal}
+.more-rows{margin:8px 0 0;font-size:12.5px}
 .dbar{display:block;height:2px;margin-top:4px;background:var(--ink-3)}
 .dbar.back{background:var(--back)} .dbar.neg{background:var(--loss)}
 #winnings .kpis{margin-top:0;border-top:0;padding-top:0}

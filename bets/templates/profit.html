@@ -147,15 +147,26 @@
 <section>
   <div class="sh"><h2>Where it came from</h2><span class="n">{{ scope }}</span></div>
   <div class="cols3 tables">
+    {% set top = 5 %}
     {% for title, rows_ in (('Bookmaker', by_bookmaker), ('Offer', by_offer), ('Type', by_type)) %}
+    {% set peak = (rows_|map(attribute='net')|map('abs')|max) if rows_ else 0 %}
+    {% set rest_id = 'from-' ~ title|lower %}
+    {% macro source_row(r) %}<tr><td>{{ type_label(r.name) if title == 'Type' else r.name }}<i class="dbar{{ ' neg' if r.net < 0 else (' back' if title == 'Bookmaker' else '') }}" data-of="{{ r.net|abs }}/{{ peak }}"></i></td><td class="rt m2">{{ r.count }}</td><td class="rt">{{ money(r.net, True) }}</td></tr>{% endmacro %}
     <div class="tw"><table class="compact">
       <thead><tr><th>{{ title }}</th><th class="rt">Bets</th><th class="rt">Profit</th></tr></thead>
       <tbody>
-      {% set peak = (rows_|map(attribute='net')|map('abs')|max) if rows_ else 0 %}
-      {% for r in rows_ %}<tr><td>{{ type_label(r.name) if title == 'Type' else r.name }}<i class="dbar{{ ' neg' if r.net < 0 else (' back' if title == 'Bookmaker' else '') }}" data-of="{{ r.net|abs }}/{{ peak }}"></i></td><td class="rt m2">{{ r.count }}</td><td class="rt">{{ money(r.net, True) }}</td></tr>
+      {% for r in rows_[:top] %}{{ source_row(r) }}
       {% else %}<tr><td colspan="3" class="m2">Nothing yet.</td></tr>{% endfor %}
       </tbody>
-    </table></div>
+      {% if rows_|length > top %}
+      <tbody id="{{ rest_id }}" hidden>
+      {% for r in rows_[top:] %}{{ source_row(r) }}
+      {% endfor %}
+      </tbody>
+      {% endif %}
+    </table>
+    {% if rows_|length > top %}<p class="more-rows"><button type="button" class="link" data-expand="{{ rest_id }}" aria-expanded="false" aria-controls="{{ rest_id }}" data-more="Show all {{ rows_|length }}" data-less="Show top {{ top }}">Show all {{ rows_|length }}</button></p>{% endif %}
+    </div>
     {% endfor %}
   </div>
   <p class="note">{% if offers_done.count %}{{ offers_done.count }} completed offer{{ '' if offers_done.count == 1 else 's' }}, {{ fmt(offers_done.total, signed=True) }} in total: <b>{{ fmt(offers_done.average, signed=True) }}</b> per completed offer (its qualifying bets, free bets and rewards).{% else %}No completed offers yet.{% endif %}</p>

@@ -220,14 +220,16 @@
     wrap.addEventListener("blur", function () { if (!pinned) hide(); });
   });
 
-  // Profit table: a year row opens into its months.
+  // Profit: a year row opens into its months; a long "Where it came from" table shows the rest.
   document.querySelectorAll("[data-expand]").forEach(function (b) {
     b.addEventListener("click", function () {
       var target = document.getElementById(b.getAttribute("data-expand"));
       if (!target) return;
       var open = b.getAttribute("aria-expanded") !== "true";
       b.setAttribute("aria-expanded", open ? "true" : "false");
-      b.setAttribute("aria-label", (open ? "Hide " : "Show ") + b.getAttribute("aria-label").replace(/^(Show|Hide) /, ""));
+      var label = b.getAttribute("aria-label");
+      if (label) b.setAttribute("aria-label", (open ? "Hide " : "Show ") + label.replace(/^(Show|Hide) /, ""));
+      if (b.hasAttribute("data-more")) b.textContent = b.getAttribute(open ? "data-less" : "data-more");
       target.hidden = !open;
     });
   });

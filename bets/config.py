@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -15,6 +16,7 @@ class Settings:
     port: int = 8760
     base_path: str = "/bets"                      # the app always lives under this prefix
     public_origins: tuple = ("https://example.com",)
+    autobet_url: str = ""                         # small header link to the betting tool; off when empty
     secure_cookies: bool = True                   # HTTPS through Cloudflare/nginx
     session_hours: int = 24 * 14
     trusted_proxy: str = "127.0.0.1"              # only nginx on this host may supply X-Real-IP
@@ -42,6 +44,12 @@ class Settings:
         return self.data_dir / "backups"
 
 
+def autobet_url(value: str) -> str:
+    """Only an https origin (no path, query or credentials) may become the header link."""
+    value = value.strip().rstrip("/")
+    return value if re.fullmatch(r"https://[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+", value) else ""
+
+
 def load_settings() -> Settings:
     env = os.environ
     s = Settings()
@@ -52,4 +60,5 @@ def load_settings() -> Settings:
     if env.get("BETS_PUBLIC_ORIGINS"):
         s.public_origins = tuple(o.strip().rstrip("/") for o in env["BETS_PUBLIC_ORIGINS"].split(",") if o.strip())
     s.secure_cookies = env.get("BETS_SECURE_COOKIES", "1") != "0"
+    s.autobet_url = autobet_url(env.get("BETS_AUTOBET_URL", ""))
     return s
