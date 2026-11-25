@@ -607,7 +607,9 @@ def _norm_offer(conn, raw: dict, source: str):
              "min_odds": None, "reward_count": None,
              "reward_each_pence": _money(raw.get("reward_each"), "reward_each", errors, required=False),
              "reward_kind": _text(raw.get("reward_type"), 4).lower() or None, "reward_expiry_days": None,
-             "reward_trigger": _text(raw.get("reward_trigger"), 20).lower() or None}
+             "reward_trigger": _text(raw.get("reward_trigger"), 20).lower() or None, "reward_delay_hours": None,
+             "reward_due_from": _text(raw.get("reward_due_from"), 20).lower() or None,
+             "reward_credited_by": _time(raw.get("credited_by"), "credited_by", errors)}
     if terms["reward_trigger"] and terms["reward_trigger"] not in services.REWARD_TRIGGERS:
         errors.append("reward_trigger: " + ", ".join(services.REWARD_TRIGGERS))
     if raw.get("min_odds") not in (None, ""):
@@ -615,7 +617,8 @@ def _norm_offer(conn, raw: dict, source: str):
             terms["min_odds"] = odds_text(parse_odds(raw.get("min_odds")))
         except ValueError as exc:
             errors.append(f"min_odds: {exc}")
-    for key, label in (("reward_count", "reward_count"), ("reward_expiry_days", "reward_expiry_days")):
+    for key, label in (("reward_count", "reward_count"), ("reward_expiry_days", "reward_expiry_days"),
+                       ("reward_delay_hours", "reward_delay_hours")):
         if raw.get(label) not in (None, ""):
             if str(raw.get(label)).strip().isdigit():
                 terms[key] = int(str(raw.get(label)).strip())
@@ -721,9 +724,12 @@ def _norm_reward(conn, raw: dict, source: str):
         expires_at = times.iso(times.parse(received_at or times.now_iso()) + timedelta(days=offer["reward_expiry_days"]))
     elif not expires_at and kind != "cash":
         warnings.append("expires_at not given: ask when the free bets expire")
+    terms = _free_bet_terms(raw, expires_at, errors) if kind != "cash" else {}
+    if errors:
+        raise CandidateError(errors)
     return {"offer_id": offer["id"], "offer": offer["title"], "count": count, "each_pence": each, "reward_kind": kind,
             "received_at": received_at, "expires_at": expires_at, "notes": _text(raw.get("notes"), 500),
-            "source": source}, warnings
+            "source": source, **terms}, warnings
 
 
 def _norm_free_bet(conn, raw: dict, source: str):
@@ -749,13 +755,43 @@ def _norm_free_bet(conn, raw: dict, source: str):
         count = int(raw["count"]) if str(raw["count"]).strip().isdigit() else 0
         if not 1 <= count <= 20:
             errors.append("count: a whole number from 1 to 20")
+    terms = _free_bet_terms(raw, expires_at, errors)
     if errors:
         raise CandidateError(errors)
     return {"account_id": acc["id"], "bookmaker": acc["name"], "face_value_pence": value, "kind": kind,
             "expires_at": expires_at, "offer_id": offer["id"] if offer else None, "count": count,
-            "offer": offer["title"] if offer else None, "notes": _text(raw.get("notes"), 2000), "source": source}, warnings
+            "offer": offer["title"] if offer else None, "notes": _text(raw.get("notes"), 2000), "source": source,
+            **terms}, warnings
 
 
+def _free_bet_terms(raw: dict, expires_at: str | None, errors: list) -> dict:
+    """The optional terms of a free bet: only those given (so older entries keep their shape)."""
+    out = {}
+    usable = _time(raw.get("usable_from"), "usable_from", errors)
+    if usable:
+        out["usable_from"] = usable
+        if expires_at and usable >= expires_at:
+            errors.append("usable_from: that is after the free bet expires")
+    restriction = str(raw.get("restriction") or "").strip()
+    if len(restriction) > services.RESTRICTION_MAX:
+        errors.append(f"restriction: at most {services.RESTRICTION_MAX} characters (put the rest in notes)")
+    elif restriction:
+        out["restriction"] = restriction
+    if _truthy(raw.get("expiry_estimated")):
+        if expires_at:
+            out["expiry_estimated"] = True
+        else:
+            errors.append("expiry_estimated: give the estimated expires_at too")
+    return out
+
+
+def _terms_raw(c: dict, when) -> dict:
+    return {**({"usable_from": when(c["usable_from"])} if c.get("usable_from") else {}),
+            **({"restriction": c["restriction"]} if c.get("restriction") else {}),
+            **({"expiry_estimated": "true"} if c.get("expiry_estimated") else {})}
+
+
+TERMS = ("usable_from", "restriction", "expiry_estimated")
 NOTE_TARGETS = ("account", "offer", "position")
 
 
@@ -1014,10 +1050,11 @@ def summary(kind: str, c: dict) -> dict:
                 "reward_value": plain(c["reward_value_pence"]), "expires_at": c["expires_at"]}
     if kind == "free_bet":
         return {"bookmaker": c["bookmaker"], "value": plain(c["face_value_pence"]), "free_bet_type": c["kind"],
-                "expires_at": c["expires_at"], "offer": c["offer"], "count": c.get("count") or 1}
+                "expires_at": c["expires_at"], "offer": c["offer"], "count": c.get("count") or 1,
+                **{k: c[k] for k in TERMS if c.get(k)}}
     if kind == "reward":
         return {"offer": c["offer"], "count": c["count"], "each": plain(c["each_pence"]), "reward_type": c["reward_kind"],
-                "expires_at": c["expires_at"]}
+                "expires_at": c["expires_at"], **{k: c[k] for k in TERMS if c.get(k)}}
     if kind == "arrival":
         return {"from": c["from"], "to": c["to"], "amount": plain(c["amount_pence"]), "arrived_at": c["arrived_at"]}
     if kind in ("amend", "reverse"):
@@ -1249,11 +1286,12 @@ def apply_kind(conn, kind: str, c: dict) -> str:
     if kind == "free_bet":
         fids = services.create_free_bets(conn, count=c.get("count") or 1, account_id=c["account_id"],
                                          face_value=c["face_value_pence"], kind=c["kind"], offer_id=c["offer_id"],
-                                         expires_at=c["expires_at"], notes=c["notes"])
+                                         expires_at=c["expires_at"], notes=c["notes"],
+                                         **{k: c[k] for k in TERMS if c.get(k)})
         return f"free_bet:{fids[0]}"
     if kind == "reward":
         services.receive_reward(conn, c["offer_id"], at=c["received_at"], expires_at=c["expires_at"], count=c["count"],
-                                each=c["each_pence"], kind=c["reward_kind"])
+                                each=c["each_pence"], kind=c["reward_kind"], **{k: c[k] for k in TERMS if c.get(k)})
         return f"offer:{c['offer_id']}"
     if kind == "arrival":
         services.mark_arrived(conn, c["transfer_id"], at=c["arrived_at"])
@@ -1320,11 +1358,13 @@ def to_raw(kind: str, c: dict, *, ids: bool = False) -> dict:
                 "qualifying_stake": money(t.get("qualifying_stake_pence")), "min_odds": t.get("min_odds") or "",
                 "reward_count": t.get("reward_count") or "", "reward_each": money(t.get("reward_each_pence")),
                 "reward_type": t.get("reward_kind") or "", "reward_expiry_days": t.get("reward_expiry_days") or "",
-                "reward_trigger": t.get("reward_trigger") or ""}
+                "reward_trigger": t.get("reward_trigger") or "", "reward_delay_hours": t.get("reward_delay_hours") or "",
+                "reward_due_from": t.get("reward_due_from") or "", "credited_by": when(t.get("reward_credited_by"))}
     if kind == "free_bet":
         return {"bookmaker": (c["account_id"] or c["bookmaker"]) if ids else c["bookmaker"], "value": plain(c["face_value_pence"]),
                 "free_bet_type": c["kind"], "expires_at": when(c["expires_at"]), "count": c.get("count") or 1,
-                "offer": ((c["offer_id"] or c["offer"]) if ids else c["offer"]) or "", "notes": c["notes"]}
+                "offer": ((c["offer_id"] or c["offer"]) if ids else c["offer"]) or "", "notes": c["notes"],
+                **_terms_raw(c, when)}
     if kind in ("amend", "reverse"):
         return _changes().to_raw(kind, c)
     if kind == "arrival":
@@ -1336,7 +1376,7 @@ def to_raw(kind: str, c: dict, *, ids: bool = False) -> dict:
     if kind == "reward":
         return {"offer": c["offer_id"] if ids else c["offer"], "count": c["count"], "each": plain(c["each_pence"]),
                 "reward_type": c["reward_kind"], "received_at": when(c["received_at"]), "expires_at": when(c["expires_at"]),
-                "notes": c["notes"]}
+                "notes": c["notes"], **_terms_raw(c, when)}
     if kind == "settlement":
         signed = lambda p: plain(p) if p is not None else ""
         return {"position": c["position_id"] or "", "event": c["event"], "selection": c["selection"],

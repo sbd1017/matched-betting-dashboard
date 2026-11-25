@@ -57,6 +57,9 @@
 <label>Each worth {{ cur() }} <small class="muted">or the cash amount</small><input name="reward_each" inputmode="decimal" value="{{ plain(o.reward_each_pence) if o and o.reward_each_pence else '' }}" placeholder="10"></label>
 <label>Free bets expire after (days) <input name="reward_expiry_days" inputmode="numeric" value="{{ o.reward_expiry_days if o and o.reward_expiry_days else '' }}" placeholder="7"></label>
 <label>Reward due when <select name="reward_trigger">{% for k, label in (('', 'the qualifier settles (default)'), ('bet_placed', 'the qualifying bet is placed'), ('bet_fully_matched', 'the qualifier is placed and hedged'), ('bet_lost', 'the qualifier loses'), ('other', 'the bookmaker confirms it')) %}<option value="{{ k }}" {{ 'selected' if o and (o.reward_trigger or '') == k }}>{{ label }}</option>{% endfor %}</select></label>
+<label>Reward credited by <small class="muted">leave blank if not known</small><input type="datetime-local" name="reward_credited_by" value="{{ to_input(o.reward_credited_by) if o else '' }}"></label>
+<label>Or due after (hours) <input name="reward_delay_hours" inputmode="numeric" value="{{ o.reward_delay_hours if o and o.reward_delay_hours else '' }}" placeholder="24"></label>
+<label>Hours count from <select name="reward_due_from">{% for k, label in (('', 'the qualifier (default)'), ('offer_end', "the offer's end (weekly offers)")) %}<option value="{{ k }}" {{ 'selected' if o and (o.reward_due_from or '')|replace('qualifier', '') == k }}>{{ label }}</option>{% endfor %}</select></label>
 {%- endmacro %}
 
 {# A position's bets as exchange cells (back blue, striped when a free bet; lay pink) and the result either way.

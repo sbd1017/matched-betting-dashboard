@@ -45,6 +45,12 @@ When = Annotated[str, Field(max_length=25, description="UK local time \"YYYY-MM-
 AccountName = Annotated[str, Field(min_length=1, max_length=60, description="Account name exactly as the user calls it "
                                                                           "(must already exist in the dashboard)")]
 Notes = Annotated[str, Field(max_length=500, description="Optional note from the user")]
+UsableFrom = Annotated[str, Field(max_length=25, description="Not usable before this time, if the bookmaker says so: UK "
+                                                             "local \"YYYY-MM-DDTHH:MM\"")]
+Restriction = Annotated[str, Field(max_length=120, description="Short restriction shown with it, e.g. \"in-play only, "
+                                                               "3+ legs\". Longer terms go in notes")]
+ExpiryEstimated = Annotated[bool, Field(description="true if expires_at is a best guess, not a time the bookmaker showed: "
+                                                    "shown as \"about 23:59\"")]
 DryRun = Annotated[bool, Field(description="true = only check with the server, store nothing (use when the user "
                                            "asks for a dry run or check)")]
 RequestId = Annotated[str, Field(max_length=64, pattern=r"^[A-Za-z0-9._:-]+$",
@@ -62,10 +68,12 @@ FIELD_NAMES = {
     "offer": {"title": "title", "bookmaker": "bookmaker", "offer_type": "offer_type", "reward_value": "reward_value",
               "starts_at": "starts_at", "expires_at": "expires_at"},
     "free_bet": {"bookmaker": "bookmaker", "value": "value", "free_bet_type": "free_bet_type",
-                 "expires_at": "expires_at", "offer": "offer"},
+                 "expires_at": "expires_at", "offer": "offer", "usable_from": "usable_from", "restriction": "restriction",
+                 "expiry_estimated": "expiry_estimated"},
     "note": {"target": "target", "target_ref": "target_ref", "text": "text"},
     "reward": {"offer": "offer", "count": "count", "each": "each", "reward_type": "reward_type",
-               "received_at": "received_at", "expires_at": "expires_at"},
+               "received_at": "received_at", "expires_at": "expires_at", "usable_from": "usable_from",
+               "restriction": "restriction", "expiry_estimated": "expiry_estimated"},
     "arrival": {"transfer": "transfer_number", "from": "from_account", "to": "to_account", "amount": "amount",
                 "arrived_at": "arrived_at"},
     "account_status": {"account": "account", "standing": "standing", "verified": "verified"},
@@ -80,6 +88,12 @@ FIELD_NAMES = {
                  "bet 2": "exchange", "bet 2 stake": "lay_stake", "bet 2 odds": "lay_odds",
                  "bet 2 commission": "commission", "lay stake": "lay_stake", "legs": "bookmaker"},
 }
+
+
+def _terms(usable_from: str, restriction: str, expiry_estimated: bool) -> dict:
+    """The optional free bet terms, only when given."""
+    return {**({"usable_from": usable_from} if usable_from else {}), **({"restriction": restriction} if restriction else {}),
+            **({"expiry_estimated": True} if expiry_estimated else {})}
 
 
 def classify(kind: str, text: str) -> dict:
@@ -491,6 +505,13 @@ def register(server, upstream: Upstream, limits: Limits, settings) -> dict:
                                       Field(description="What makes the reward due, from the terms: bet_placed (credited "
                                                         "once the qualifier is accepted), bet_settled (default), "
                                                         "bet_lost (money back)...")] = None,
+            credited_by: Annotated[str, Field(max_length=25, description="When the terms say the reward is credited by, UK "
+                                              "local YYYY-MM-DDTHH:MM. Leave empty if they don't say: never guess")] = "",
+            reward_delay_hours: Annotated[int | None, Field(ge=1, le=720, description="Reward due this many hours after the "
+                                                            "qualifier (or the offer's end)")] = None,
+            reward_due_from: Annotated[Literal["qualifier", "offer_end"] | None,
+                                       Field(description="What reward_delay_hours counts from: offer_end for a weekly offer "
+                                                         "that pays after the week ends")] = None,
             starts_at: When = "", expires_at: When = "", notes: Notes = "", dry_run: DryRun = False,
             request_id: RequestId = "") -> CallToolResult:
         """Use this when the user wants to track a promotion/offer. Give the terms as fields when the user says them
@@ -502,7 +523,8 @@ def register(server, upstream: Upstream, limits: Limits, settings) -> dict:
                              "reward": reward, "reward_value": reward_value, "qualifying_stake": qualifying_stake,
                              "min_odds": min_odds, "reward_count": reward_count, "reward_each": reward_each,
                              "reward_type": reward_type, "reward_expiry_days": reward_expiry_days,
-                             "reward_trigger": reward_trigger,
+                             "reward_trigger": reward_trigger, "credited_by": credited_by,
+                             "reward_delay_hours": reward_delay_hours, "reward_due_from": reward_due_from,
                              "starts_at": starts_at, "expires_at": expires_at, "notes": notes}, dry_run, request_id)
 
     @server.tool(name="submit_free_bet_candidate", title="Record a free bet credited", annotations=SUBMIT, meta=_meta("submit_free_bet_candidate"))
@@ -513,13 +535,15 @@ def register(server, upstream: Upstream, limits: Limits, settings) -> dict:
             expires_at: When = "",
             offer: Annotated[str, Field(max_length=160, description="Title of the offer it came from, if any")] = "",
             count: Annotated[int, Field(ge=1, le=20, description="How many identical free bets, e.g. 3 for 3 x £10")] = 1,
+            usable_from: UsableFrom = "", restriction: Restriction = "", expiry_estimated: ExpiryEstimated = False,
             notes: Notes = "", dry_run: DryRun = False, request_id: RequestId = "") -> CallToolResult:
         """Use this when a bookmaker credited the user free bets that are not tied to a tracked offer's reward (for an
         offer the dashboard knows, prefer submit_reward_candidate). Free bets are not cash. Creates a candidate the
         user confirms (or their Trusted Assistant mode records automatically)."""
         return await submit("submit_free_bet_candidate", "free_bet",
                             {"bookmaker": bookmaker, "value": value, "free_bet_type": free_bet_type, "count": count,
-                             "expires_at": expires_at, "offer": offer, "notes": notes}, dry_run, request_id)
+                             "expires_at": expires_at, "offer": offer, "notes": notes,
+                             **_terms(usable_from, restriction, expiry_estimated)}, dry_run, request_id)
 
     @server.tool(name="submit_note_candidate", title="Add a note to an account, offer or position", annotations=SUBMIT, meta=_meta("submit_note_candidate"))
     async def submit_note_candidate(
@@ -588,12 +612,14 @@ def register(server, upstream: Upstream, limits: Limits, settings) -> dict:
             count: Annotated[int | None, Field(ge=1, le=20, description="Only if different from the offer's terms")] = None,
             each: Annotated[str, Field(max_length=20, description="Only if different: value of each (in the dashboard's currency)")] = "",
             reward_type: Annotated[Literal["snr", "sr", "cash"] | None, Field(description="Only if different")] = None,
+            usable_from: UsableFrom = "", restriction: Restriction = "", expiry_estimated: ExpiryEstimated = False,
             notes: Notes = "", dry_run: DryRun = False, request_id: RequestId = "") -> CallToolResult:
         """Use this when the user says the reward for an offer has arrived ("my Coral free bets came through"). The
         dashboard creates the free bets (or the cash reward) from the offer's terms and moves the offer on."""
         return await submit("submit_reward_candidate", "reward",
                             {"offer": offer, "received_at": received_at, "expires_at": expires_at, "count": count,
-                             "each": each, "reward_type": reward_type, "notes": notes}, dry_run, request_id)
+                             "each": each, "reward_type": reward_type, "notes": notes,
+                             **_terms(usable_from, restriction, expiry_estimated)}, dry_run, request_id)
 
     @server.tool(name="submit_arrival_candidate", title="Record that a withdrawal reached the bank", annotations=SUBMIT,
                  meta=_meta("submit_arrival_candidate"))
@@ -651,6 +677,11 @@ def register(server, upstream: Upstream, limits: Limits, settings) -> dict:
                                                                       "\"new\"")] = "",
             status: Annotated[str, Field(max_length=20, description="Offer or free bet status")] = "",
             expires_at: Annotated[str, Field(max_length=25, description="Offer / free bet: new expiry")] = "",
+            usable_from: Annotated[str, Field(max_length=25, description="Free bet: not usable before this time")] = "",
+            restriction: Annotated[str, Field(max_length=120, description="Free bet: short restriction, e.g. in-play "
+                                                                          "only, 3+ legs")] = "",
+            expiry_estimated: Annotated[bool | None, Field(description="Free bet: true if its expiry is a best guess, "
+                                                                       "false if it is exact")] = None,
             title: Annotated[str, Field(max_length=160, description="Offer: new title")] = "",
             requirement: Annotated[str, Field(max_length=300, description="Offer: new requirement")] = "",
             reward: Annotated[str, Field(max_length=300, description="Offer: new reward text")] = "",
@@ -668,7 +699,9 @@ def register(server, upstream: Upstream, limits: Limits, settings) -> dict:
                              "commission": commission, "placed_at": placed_at, "reference": reference,
                              "move_to": move_to, "status": status, "expires_at": expires_at, "title": title,
                              "requirement": requirement, "reward": reward, "at": when, "return_by": return_by,
-                             "name": name}, dry_run, request_id)
+                             "name": name, "usable_from": usable_from, "restriction": restriction,
+                             "expiry_estimated": "" if expiry_estimated is None else str(expiry_estimated).lower()},
+                            dry_run, request_id)
 
     @server.tool(name="submit_reverse_candidate", title="Undo something recorded by mistake", annotations=SUBMIT,
                  meta=_meta("submit_reverse_candidate"))

@@ -20,7 +20,6 @@ from . import services, times
 from .money import fmt
 from .services import UserError
 
-DEFAULT_DELAY_HOURS = 24
 STAGES = ("discovered", "reviewed", "opted_in", "deposit_required", "deposit_complete", "qualifier_required",
           "qualifier_planned", "qualifier_placed", "qualifier_settled", "reward_expected", "reward_overdue",
           "reward_credited", "reward_partially_used", "reward_used", "completed", "failed", "expired", "void")
@@ -28,9 +27,9 @@ STAGES = ("discovered", "reviewed", "opted_in", "deposit_required", "deposit_com
 
 # ---------------------------------------------------------------- expected rewards
 
-def expect(conn, *, offer_id=None, account_id=None, kind=None, count=None, each=None, expected_by=None,
-           expiry_days=None, source_position_id=None, notes: str = "", sync: bool = True) -> tuple[int, bool]:
-    """Create an expected reward (or return the existing one for the same offer and qualifier). -> (id, created)."""
+def find_expected(conn, *, offer_id=None, account_id=None, kind=None, count=None, each=None,
+                  source_position_id=None) -> tuple[dict, dict | None]:
+    """What an expected reward would hold, and the one already recorded for the same offer (or qualifier), if any."""
     offer = services.row(conn, "offers", int(offer_id)) if offer_id else None
     if offer_id and (not offer or offer["deleted_at"]):
         raise UserError(f"No offer #{offer_id}")
@@ -40,18 +39,38 @@ def expect(conn, *, offer_id=None, account_id=None, kind=None, count=None, each=
     account_id = int(account_id or (offer["account_id"] if offer else 0) or 0)
     if kind not in ("snr", "sr", "cash") or each <= 0 or not account_id:
         raise UserError("Give the reward: bookmaker, type (snr / sr / cash), value each and how many")
-    existing = conn.execute("SELECT id FROM expected_rewards WHERE status <> 'void' AND offer_id = ? AND kind = ? AND "
+    existing = conn.execute("SELECT * FROM expected_rewards WHERE status <> 'void' AND offer_id = ? AND kind = ? AND "
                             "each_pence = ?", (int(offer_id), kind, each)).fetchone() if offer_id else \
-        conn.execute("SELECT id FROM expected_rewards WHERE status <> 'void' AND offer_id IS NULL AND "
+        conn.execute("SELECT * FROM expected_rewards WHERE status <> 'void' AND offer_id IS NULL AND "
                      "coalesce(source_position_id, 0) = ? AND kind = ? AND each_pence = ? AND account_id = ?",
                      (int(source_position_id or 0), kind, each, account_id)).fetchone()
+    return {"offer": offer, "kind": kind, "each": each, "count": count, "account_id": account_id}, \
+        dict(existing) if existing else None
+
+
+def expect(conn, *, offer_id=None, account_id=None, kind=None, count=None, each=None, expected_by=None, due_source=None,
+           expiry_days=None, source_position_id=None, notes: str = "", sync: bool = True) -> tuple[int, bool]:
+    """Create an expected reward. One already recorded for the same offer (or qualifier) is kept, and given the new
+    expected_by when there is one. Without a date it takes the offer's, else its date is unknown. -> (id, created)."""
+    want, existing = find_expected(conn, offer_id=offer_id, account_id=account_id, kind=kind, count=count, each=each,
+                                   source_position_id=source_position_id)
+    offer, kind, each, count, account_id = (want[k] for k in ("offer", "kind", "each", "count", "account_id"))
     if existing:
-        return existing[0], False
+        if expected_by:
+            set_due(conn, existing["id"], expected_by, notes.strip()[:300])
+        return existing["id"], False
+    if expected_by:
+        due_source = due_source or "given"
+    elif offer:
+        from . import offer_state
+        expected_by = offer_state.due_at(conn, offer)
+        due_source = "offer" if expected_by else None
     now = times.now_iso()
     cur = conn.execute("INSERT INTO expected_rewards (offer_id, account_id, source_position_id, kind, count, each_pence, "
-                       "expected_by, expiry_days, notes, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                       "expected_by, due_source, expiry_days, notes, created_at, updated_at) VALUES "
+                       "(?,?,?,?,?,?,?,?,?,?,?,?)",
                        (int(offer_id) if offer_id else None, account_id, source_position_id, kind, count, each,
-                        expected_by, int(expiry_days) if expiry_days else (offer["reward_expiry_days"] if offer else None),
+                        expected_by, due_source, int(expiry_days) if expiry_days else (offer["reward_expiry_days"] if offer else None),
                         notes.strip()[:500], now, now))
     rid = cur.lastrowid
     services.audit(conn, "expected_reward", rid, "expected", None, {"offer_id": offer_id, "kind": kind, "count": count,
@@ -110,10 +129,31 @@ def correction_problem(conn, r: dict, count: int, each: int, kind: str) -> str |
     return None
 
 
-def update_expected_reward(conn, rid: int, *, count=None, each=None, kind=None, note: str = "") -> dict:
+def set_due(conn, rid: int, expected_by: str | None, note: str = "") -> bool:
+    """Give an expected reward its due date. None forgets a given date: back to the offer's terms, else unknown."""
+    r = services.row(conn, "expected_rewards", int(rid))
+    if not r or r["status"] == "void":
+        raise UserError(f"No expected reward #{rid}" if not r else f"Expected reward #{rid} is void")
+    source = "given" if expected_by else None
+    offer = services.row(conn, "offers", r["offer_id"]) if r["offer_id"] else None
+    if not expected_by and offer:
+        from . import offer_state
+        expected_by = offer_state.due_at(conn, offer)
+        source = "offer" if expected_by else None
+    if (r["expected_by"], r["due_source"]) == (expected_by, source):
+        return False
+    conn.execute("UPDATE expected_rewards SET expected_by = ?, due_source = ?, updated_at = ? WHERE id = ?",
+                 (expected_by, source, times.now_iso(), r["id"]))
+    services.audit(conn, "expected_reward", r["id"], "due", {"expected_by": r["expected_by"], "due_source": r["due_source"]},
+                   {"expected_by": expected_by, "due_source": source}, note or "due date changed")
+    return True
+
+
+def update_expected_reward(conn, rid: int, *, count=None, each=None, kind=None, expected_by=None,
+                           clear_expected_by: bool = False, note: str = "") -> dict:
     """Correct an expected reward's snapshot (how many, value each, type), e.g. after its offer's terms were corrected
-    from 1 x £30 to 3 x £10. Never creates, deletes or relinks a free bet; the offer link, qualifier, dates and
-    audit history stay. The status still follows the linked free bets (_refresh), and the offer is synced."""
+    from 1 x £30 to 3 x £10, or its due date. Never creates, deletes or relinks a free bet; the offer link, qualifier
+    and audit history stay. The status still follows the linked free bets (_refresh), and the offer is synced."""
     r = services.row(conn, "expected_rewards", int(rid))
     if not r:
         raise UserError(f"No expected reward #{rid}")
@@ -124,12 +164,15 @@ def update_expected_reward(conn, rid: int, *, count=None, each=None, kind=None, 
     if problem:
         raise UserError(problem)
     changed = {k: v for k, v in new.items() if r[k] != v}
+    if changed:
+        conn.execute("UPDATE expected_rewards SET " + ", ".join(f"{k} = ?" for k in changed) + ", updated_at = ? WHERE "
+                     "id = ?", (*changed.values(), times.now_iso(), r["id"]))
+        services.audit(conn, "expected_reward", r["id"], "corrected", {k: r[k] for k in changed}, changed,
+                       note or "expected reward corrected")
+    if (expected_by or clear_expected_by) and set_due(conn, r["id"], expected_by or None, note):
+        changed["expected_by"] = services.row(conn, "expected_rewards", r["id"])["expected_by"]
     if not changed:
         return {"expected_reward_id": r["id"], "changed": {}, "status": r["status"]}
-    conn.execute("UPDATE expected_rewards SET " + ", ".join(f"{k} = ?" for k in changed) + ", updated_at = ? WHERE id = ?",
-                 (*changed.values(), times.now_iso(), r["id"]))
-    services.audit(conn, "expected_reward", r["id"], "corrected", {k: r[k] for k in changed}, changed,
-                   note or "expected reward corrected")
     status = _refresh(conn, r["id"])
     if r["offer_id"]:
         from . import offer_state
@@ -255,9 +298,10 @@ def unlink(conn, rid: int, free_bet_ids: list[int], sync: bool = True) -> list[i
 
 def mark_received(conn, rid: int, *, free_bet_ids: list[int] | None = None, count: int | None = None,
                   expires_at: str | None = None, at: str | None = None, notes: str = "",
-                  use_candidates: bool = True) -> dict:
+                  use_candidates: bool = True, **terms) -> dict:
     """The reward arrived. Links the free bets given, else free bets already recorded that match, and only creates
-    the missing ones -- never a second copy of a reward."""
+    the missing ones -- never a second copy of a reward. terms (usable_from, restriction, expiry_estimated) go on the
+    ones created."""
     r = services.row(conn, "expected_rewards", rid)
     if not r or r["status"] == "void":
         raise UserError(f"No expected reward #{rid}")
@@ -287,7 +331,7 @@ def mark_received(conn, rid: int, *, free_bet_ids: list[int] | None = None, coun
             expires_at = times.iso(times.parse(at or times.now_iso()) + timedelta(days=int(r["expiry_days"])))
         created = services.create_free_bets(conn, count=missing, account_id=r["account_id"], face_value=r["each_pence"],
                                             kind=r["kind"], offer_id=r["offer_id"], credited_at=at,
-                                            expires_at=expires_at, notes=notes)
+                                            expires_at=expires_at, notes=notes, **terms)
         link(conn, rid, created)
     if count and int(count) != r["count"]:
         services.audit(conn, "expected_reward", rid, "count_differs", {"count": r["count"]}, {"received": int(count)})
@@ -306,6 +350,8 @@ def describe(conn, r: dict) -> dict:
     return {"id": r["id"], "offer": _offer_ref(conn, r["offer_id"]), "bookmaker": _name(conn, r["account_id"]),
             "expected": f"{r['count']} x {fmt(r['each_pence'])} {r['kind'].upper()}", "type": r["kind"],
             "count": r["count"], "each": m(r["each_pence"]), "expected_by": t(r["expected_by"]),
+            "due": times.due_text(r["expected_by"]),
+            "due_source": {"given": "given", "offer": "offer_terms"}.get(r["due_source"]),
             "overdue": bool(r["status"] in ("waiting", "partially_received") and r["expected_by"]
                             and r["expected_by"] < times.now_iso()),
             "status": r["status"], "source_position_id": r["source_position_id"],

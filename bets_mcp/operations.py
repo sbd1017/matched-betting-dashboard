@@ -516,7 +516,9 @@ def register(server, upstream, limits, settings) -> dict:
                             position_id: Annotated[int | None, Field(ge=1)] = None,
                             notes: Annotated[str, Field(max_length=300)] = "", dry_run: DryRun = False) -> CallToolResult:
         """Use this when a qualifier is done and a reward is due (normally automatic when a qualifying position of an offer
-        with reward terms settles). Not money; matched to the free bets when they arrive."""
+        with reward terms settles). Not money; matched to the free bets when they arrive. If it is already expected,
+        a new expected_by updates its date. Leave expected_by empty when the terms give no date: it takes the offer's
+        credited-by date or delay, else the date is unknown."""
         return await change("expect_reward", {"offer_id": offer_id, "bookmaker": bookmaker, "reward_type": reward_type,
                                               "count": count, "each": each, "expected_by": expected_by,
                                               "expiry_days": expiry_days, "position_id": position_id, "notes": notes},
@@ -534,13 +536,19 @@ def register(server, upstream, limits, settings) -> dict:
                                    free_bet_ids: Annotated[list[int], Field(description="Free bets already recorded that are "
                                                                                         "this reward")] = [],
                                    count: Annotated[int | None, Field(ge=1, le=20)] = None, expires_at: WhenUK = "",
+                                   expiry_estimated: Annotated[bool, Field(description="expires_at is a best guess")] = False,
+                                   usable_from: Annotated[str, Field(max_length=25, description="Not usable before: UK "
+                                                                                                "local YYYY-MM-DDTHH:MM")] = "",
+                                   restriction: Annotated[str, Field(max_length=120, description="Short restriction, e.g. "
+                                                                                                 "in-play only, 3+ legs")] = "",
                                    received_at: WhenUK = "", notes: Annotated[str, Field(max_length=300)] = "",
                                    reason: Reason = "", dry_run: DryRun = False) -> CallToolResult:
         """Use this when the user shows the reward credited. Links matching free bets already recorded and creates only
         the missing ones -- the same reward reported twice is never recorded twice."""
         return await change("mark_reward_received", {"expected_reward_id": expected_reward_id, "free_bet_ids": free_bet_ids,
                                                      "count": count, "expires_at": expires_at, "received_at": received_at,
-                                                     "notes": notes}, reason, dry_run, request_id)
+                                                     "expiry_estimated": expiry_estimated, "usable_from": usable_from,
+                                                     "restriction": restriction, "notes": notes}, reason, dry_run, request_id)
 
     @tool("unlink_free_bet_from_reward", "Unlink a free bet wrongly matched to an expected reward", EDIT)
     async def unlink_free_bet_from_reward(expected_reward_id: RecordNo, request_id: ChangeId,
@@ -555,19 +563,24 @@ def register(server, upstream, limits, settings) -> dict:
         return await change("unlink_free_bet_from_reward", {"expected_reward_id": expected_reward_id,
                                                             "free_bet_ids": free_bet_ids}, reason, dry_run, request_id)
 
-    @tool("update_expected_reward", "Correct an expected reward (how many, value each, type)", EDIT)
+    @tool("update_expected_reward", "Correct an expected reward (how many, value each, type, due date)", EDIT)
     async def update_expected_reward(expected_reward_id: RecordNo, request_id: ChangeId,
                                      count: Annotated[int | None, Field(ge=1, le=50)] = None,
                                      each: Annotated[str, Field(max_length=20)] = "",
                                      reward_type: Literal["snr", "sr", "cash"] | None = None,
+                                     expected_by: Annotated[str, Field(max_length=25, description="Due by: UK local "
+                                                                       "YYYY-MM-DDTHH:MM (empty = no change)")] = "",
+                                     clear_expected_by: Annotated[bool, Field(description="Forget the date given: back to "
+                                                                              "the offer's terms, else unknown")] = False,
                                      reason: Reason = "", dry_run: DryRun = False) -> CallToolResult:
         """Use this when an expected reward holds the wrong shape, e.g. the offer's terms were corrected from 1 x £30 to
         3 x £10 after the reward was expected (Issues: "3 free bet(s) linked where 1 x £30.00 was expected" offers it as
-        a repair). Corrects only the expectation: never creates, deletes or relinks free bets, keeps the offer link,
-        qualifier, dates and history. Warns when the total value changes. Not money or profit."""
+        a repair), or when it is due by a different time (expected_by). Corrects only the expectation: never creates,
+        deletes or relinks free bets, keeps the offer link, qualifier and history. Warns when the total value changes. Not money or profit."""
         return await change("update_expected_reward", {"expected_reward_id": expected_reward_id, "count": count,
-                                                       "each": each, "reward_type": reward_type}, reason, dry_run,
-                            request_id)
+                                                       "each": each, "reward_type": reward_type,
+                                                       "expected_by": expected_by, "clear_expected_by": clear_expected_by},
+                            reason, dry_run, request_id)
 
     @tool("update_offer_progress", "Offer terms and progress (opt-in, deposit...)", EDIT)
     async def update_offer_progress(offer_id: RecordNo, request_id: ChangeId,
@@ -580,6 +593,9 @@ def register(server, upstream, limits, settings) -> dict:
                                     reward_type: Literal["snr", "sr", "cash"] | None = None,
                                     reward_expiry_days: Annotated[int | None, Field(ge=1, le=365)] = None,
                                     reward_delay_hours: Annotated[int | None, Field(ge=1, le=720)] = None,
+                                    reward_due_from: Annotated[Literal["qualifier", "offer_end"] | None, Field(
+                                        description="What reward_delay_hours counts from: offer_end for a weekly offer "
+                                                    "that pays after the week ends")] = None,
                                     required_sport: Annotated[str | None, Field(max_length=40)] = None,
                                     required_market: Annotated[str | None, Field(max_length=80)] = None,
                                     min_legs: Annotated[int | None, Field(ge=1, le=30)] = None, when: WhenUK = "",
@@ -597,6 +613,7 @@ def register(server, upstream, limits, settings) -> dict:
             "opt_in_required": opt_in_required, "deposit_required": deposit_required, "qualifying_stake": qualifying_stake,
             "min_odds": min_odds, "reward_count": reward_count, "reward_each": reward_each, "reward_type": reward_type,
             "reward_expiry_days": reward_expiry_days, "reward_delay_hours": reward_delay_hours,
+            "reward_due_from": reward_due_from,
             "required_sport": required_sport, "required_market": required_market, "min_legs": min_legs, "when": when},
             reason, dry_run, request_id)
 

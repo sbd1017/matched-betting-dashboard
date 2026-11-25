@@ -24,7 +24,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import rewards, offer_state, exposure, assistant, calc, exports, imports, issues, metrics, outlook, profit, services, times, undo
+from . import freebet_state, rewards, offer_state, exposure, assistant, calc, exports, imports, issues, metrics, outlook, profit, services, times, undo
 from . import commission as comm
 from . import brief, evidence, ops, plans, readapi
 from .auth import COOKIE, LoginLimiter, SessionCodec, load_credentials, load_secret, verify_password
@@ -90,7 +90,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     templates = Jinja2Templates(directory=str(HERE / "templates"))
     env = templates.env
     env.globals.update(cur=money.symbol, currency_code=money.currency)
-    env.globals.update(result_cls=outlook.result_cls)
+    env.globals.update(result_cls=outlook.result_cls, expiry_text=freebet_state.expiry_text,
+                       usable_text=freebet_state.usable_text)
     env.globals.update(fmt=fmt, plain=plain, local=times.local, relative=times.relative, to_input=times.to_local_input,
                        commission_text=commission_text, commission_promo=comm.promo, pct=pct,
                        promo_date_input=comm.date_input, CATEGORY_LABELS=CATEGORY_LABELS, CAPITAL_LABELS=CAPITAL_LABELS,
@@ -503,7 +504,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             item = {"at": at, "kind": "Expires", "cls": "k-red" if at <= soon else "k-ink",
                     "when": times.local(at, "%a %H:%M"),
                     "title": f"{n} {fbs[0]['account']} free bet{'s' if n > 1 else ''}",
-                    "text": f"{kind.upper()} · {times.local(at)} · {times.relative(at)}",
+                    "text": f"{kind.upper()} · {freebet_state.expiry_text(fbs[0])} · {times.relative(at)}"
+                            + (f" · {fbs[0]['restriction']}" if n == 1 and fbs[0]["restriction"] else ""),
                     "worth": (fmt(total).replace(".00", ""), "to use", ""),
                     "action": ("Find a match", f"/quick-add?kind=free_bet_{kind}&free_bet_id={fbs[0]['id']}"
                                                f"&back_account={account_id}", at <= soon)}
@@ -574,9 +576,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                                      f"{o['reward'] or 'reward'} · overdue{' since ' + times.local(due) if due else ''}, "
                                      "check the bookmaker and chase it"})
             else:                                   # qualified, reward on its way: nothing to do until it arrives
-                waiting.append(item | {"cls": "k-blue", "when": times.local(due, "%a %H:%M") if due else "due",
+                waiting.append(item | {"cls": "k-blue", "when": times.local(due, "%a %H:%M") if due else "no date",
                                        "text": f"{o['account'] or 'Bookmaker'} · {o['reward'] or 'reward'} · qualified, "
-                                       + (f"expected by {times.local(due)}" if due else "reward on its way")})
+                                       + (f"expected by {times.local(due)}" if due else "date unknown")})
         for p in comm.promos(conn):                 # promotional commission rates ending (30 days, 7 days, ended)
             if p["level"] == "later":
                 continue
@@ -1076,7 +1078,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "reward_each_pence": money_opt("reward_each", "Each free bet"),
                 "reward_kind": f.get("reward_kind") or None,
                 "reward_expiry_days": int_opt("reward_expiry_days", "Free bet expiry"),
-                "reward_trigger": f.get("reward_trigger") or None}
+                "reward_trigger": f.get("reward_trigger") or None,
+                "reward_delay_hours": int_opt("reward_delay_hours", "Reward delay"),
+                "reward_due_from": f.get("reward_due_from") or None,
+                "reward_credited_by": times.from_local_input(f.get("reward_credited_by"))}
 
     def offer_fields(f: dict) -> dict:
         return {"title": f.get("title", "").strip(), "account_id": opt_int(f.get("account_id")),
@@ -1130,7 +1135,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                                                   "a.id = e.account_id WHERE e.offer_id = ? AND e.superseded_at IS NULL", (oid,))]
             audit = [dict(r) for r in conn.execute("SELECT * FROM audit_log WHERE entity = 'offer' AND entity_id = ? "
                                                    "ORDER BY id DESC LIMIT 50", (oid,))]
-            return render(request, "offer.html", {"o": o, "life": offer_state.derive(conn, o),
+            return render(request, "offer.html", {"o": o, "life": offer_state.derive(conn, o), "due": offer_state.due_at(conn, o),
+                                                  "rewards_due": [dict(r) for r in conn.execute(
+                                                      "SELECT * FROM expected_rewards WHERE offer_id = ? AND status IN "
+                                                      "('waiting', 'partially_received') ORDER BY id", (oid,))],
                                                   "positions": pos, "free_bets": fbs, "cash": cash, "audit": audit,
                                                   "realised": services.offer_realised(conn, oid),
                                                   "bookmakers": accounts(conn, ("bookmaker", "exchange"), False)})
@@ -1195,6 +1203,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             rows = [dict(r) for r in conn.execute(q + " ORDER BY f.status <> 'available', f.expires_at IS NULL, f.expires_at")]
             for r in rows:
                 r["realised"] = services.free_bet_value_realised(conn, r["id"])
+                r["state"] = freebet_state.derive(conn, r)
                 r["link_choices"] = [] if r["position_id"] else [dict(x) for x in conn.execute(
                     "SELECT p.id, p.event, l.free_bet_id FROM legs l JOIN positions p ON p.id = l.position_id WHERE "
                     "l.deleted_at IS NULL AND p.deleted_at IS NULL AND l.side = 'back' AND l.account_id = ? AND "
@@ -1229,6 +1238,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                                       face_value=money_or_error(f.get("face_value", ""), "Value", allow_zero=False),
                                       kind=f.get("kind") or "snr", offer_id=opt_int(f.get("offer_id")),
                                       expires_at=times.from_local_input(f.get("expires_at")),
+                                      usable_from=times.from_local_input(f.get("usable_from")),
+                                      restriction=f.get("restriction", ""), expiry_estimated=bool(f.get("expiry_estimated")),
                                       notes=f.get("notes", "").strip())
             return back("/free-bets", ok=f"{n} free bets added" if n > 1 else "Free bet added",
                         undo_token="freebets:" + ",".join(map(str, fids)))
@@ -1241,6 +1252,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             data = {"status": f.get("status") or None, "expires_at": times.from_local_input(f.get("expires_at")),
                     "notes": f.get("notes", "").strip()}
             data = {k: v for k, v in data.items() if v is not None}
+            if "has_terms" in f:                                  # the Edit form: an empty field clears it
+                data |= {"usable_from": times.from_local_input(f.get("usable_from")), "restriction": f.get("restriction", ""),
+                         "expiry_estimated": 1 if f.get("expiry_estimated") else 0}
             if "offer_id" in f:                                   # the offer this token came from (or none)
                 data["offer_id"] = opt_int(f.get("offer_id"))
             link_to = opt_int(f.get("position_id"))
@@ -1784,6 +1798,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         with db.read() as conn:
             return render(request, "imports.html", imports_context(conn, batch))
 
+    def terms_rows(c: dict) -> list:
+        return ([("Not usable before", times.local(c["usable_from"]))] if c.get("usable_from") else []) \
+            + ([("Restriction", c["restriction"])] if c.get("restriction") else [])
+
     def kind_preview(conn, kind: str, c: dict) -> list[tuple[str, str]]:
         """What confirming will do, in the app's terms (signed-in page only, so balances may be shown)."""
         if kind == "account":
@@ -1825,18 +1843,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     f"odds {t['min_odds']}+" if t.get("min_odds") else "") if x)))
             if t.get("reward_expiry_days"):
                 rows.append(("Free bets expire", f"{t['reward_expiry_days']} days after they arrive"))
+            if t.get("reward_credited_by"):
+                rows.append(("Reward credited by", times.local(t["reward_credited_by"])))
+            elif t.get("reward_delay_hours"):
+                rows.append(("Reward due", f"{t['reward_delay_hours']} h after " + (
+                    "the offer ends" if t.get("reward_due_from") == "offer_end" else "the qualifier")))
             return rows
         if kind == "free_bet":
             return [("Bookmaker", c["bookmaker"]), ("Value", fmt(c["face_value_pence"])
                      + (f" each × {c['count']}" if (c.get("count") or 1) > 1 else "")),
                     ("Type", "Stake returned (SR)" if c["kind"] == "sr" else "Stake not returned (SNR)"),
-                    ("Expires", times.local(c["expires_at"]) if c["expires_at"] else "—"), ("Offer", c["offer"] or "—")]
+                    ("Expires", freebet_state.expiry_text(c) if c["expires_at"] else "—"), ("Offer", c["offer"] or "—"),
+                    *terms_rows(c)]
         if kind == "reward":
             what = (f"{fmt(c['each_pence'])} cash reward (completes the offer)" if c["reward_kind"] == "cash" else
                     f"{c['count']} × {fmt(c['each_pence'])} {c['reward_kind'].upper()} free bets linked to the offer")
             return [("Offer", c["offer"]), ("Creates", what),
-                    ("Expires", times.local(c["expires_at"]) if c["expires_at"] else "—"),
-                    ("Arrived", times.local(c["received_at"]) if c["received_at"] else "now")]
+                    ("Expires", freebet_state.expiry_text(c) if c["expires_at"] else "—"),
+                    ("Arrived", times.local(c["received_at"]) if c["received_at"] else "now"), *terms_rows(c)]
         if kind == "settlement":
             rows = [("Position", (f"#{c['position_id']} " if c["position_id"] else "") + c["event"]
                      + (f" — {c['selection']}" if c["selection"] else "")

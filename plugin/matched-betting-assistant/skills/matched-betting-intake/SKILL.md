@@ -55,6 +55,10 @@ same reminder is not repeated; an alert comes back by itself if it escalates.
    `update_expected_reward`; never relink, delete or recreate free bets to make it match. If a reward was matched to
    the wrong free bet (another promotion's token of the same value), `unlink_free_bet_from_reward`, then link the right
    one with `mark_reward_received` free_bet_ids.
+   *When a reward is due* is never guessed. Record what the terms say: `credited_by` on the offer (a weekly club: the
+   day after the week ends), or `reward_delay_hours` with `reward_due_from` (`offer_end` when it pays after the offer
+   ends). If they don't say, leave it: it shows "date unknown" and is never overdue. Correct one reward's date with
+   `update_expected_reward` expected_by.
 7. *Funding back*: when next actions say temporary funding "can be returned", tell the user; record the return
    only after they say they did it. Never suggest moving money that is still holding liability.
 

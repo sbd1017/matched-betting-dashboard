@@ -14,8 +14,10 @@
   <article class="item static fbrow" id="fb-{{ f.id }}">
     <span class="amt {{ 'loss' if f.status == 'available' and f.expires_at and f.expires_at <= soon else ('m3' if f.status != 'available' else '') }}">{{ fmt(f.face_value_pence)|replace('.00', '') }}</span>
     <span class="item-main"><b>{{ f.account }} <span class="m3">{{ f.kind|upper }}</span></b>
-      <span class="muted small">{% if f.expires_at %}Expires {{ local(f.expires_at) }} ({{ relative(f.expires_at) }}){% else %}No expiry recorded{% endif %}{% if f.offer_title %} · {{ f.offer_title }}{% endif %}</span>
+      <span class="muted small">{% if f.expires_at %}Expires {{ expiry_text(f) }} ({{ relative(f.expires_at) }}){% else %}No expiry recorded{% endif %}{% if f.usable_from %} · {{ usable_text(f) }}{% endif %}{% if f.restriction %} · {{ f.restriction }}{% endif %}{% if f.offer_title %} · {{ f.offer_title }}{% endif %}</span>
       {% if f.left %}<span class="drain"><i data-left="{{ f.left }}"></i></span>{% endif %}
+      {% if f.state.plan %}<span class="small"><a href="{{ u('/plans/' ~ f.state.plan.id) }}">{{ f.state.plan.text }}</a></span>{% endif %}
+      {% if f.state.status == 'uncovered' and f.state.bet.status == 'open' %}<span class="small loss">Placed, not covered: {{ f.state.text|lower }}</span>{% endif %}
       {% if f.position_id %}<span class="small"><a href="{{ u('/positions/' ~ f.position_id) }}">Used in position #{{ f.position_id }}</a>{% if f.realised is not none %} · kept {{ fmt(f.realised, signed=True) }}{% endif %}</span>{% endif %}
     </span>
     <span class="item-side">
@@ -27,6 +29,10 @@
       <form method="post" action="{{ u('/free-bets/' ~ f.id) }}" class="cols3">{{ csrf_field() }}
         <label>Status <select name="status">{% for st in ('available', 'used', 'expired', 'void') %}<option {{ 'selected' if f.status == st }}>{{ st }}</option>{% endfor %}</select></label>
         <label>Expires <input type="datetime-local" name="expires_at" value="{{ to_input(f.expires_at) }}"></label>
+        <input type="hidden" name="has_terms" value="1">
+        <label class="check"><input type="checkbox" name="expiry_estimated" value="1"{{ ' checked' if f.expiry_estimated }}> Expiry is an estimate</label>
+        <label>Not usable before <input type="datetime-local" name="usable_from" value="{{ to_input(f.usable_from) }}"></label>
+        <label>Restriction <input name="restriction" maxlength="120" value="{{ f.restriction }}"></label>
         <label>Offer <select name="offer_id"><option value="">None</option>{% for o in all_offers if not o.account_id or o.account_id == f.account_id %}<option value="{{ o.id }}" {{ 'selected' if f.offer_id == o.id }}>{{ o.title }}</option>{% endfor %}</select></label>
         <label>Notes <input name="notes" value="{{ f.notes }}"></label>
         {% if not f.position_id %}<label>Used in position <small class="muted">sets it used</small><select name="position_id"><option value="">Not used yet</option>
@@ -52,6 +58,9 @@
     <label>How many <input name="count" inputmode="numeric" value="1"></label>
     <label>Type <select name="kind"><option value="snr">SNR (stake not returned)</option><option value="sr">SR (stake returned)</option></select></label>
     <label>Expires <input type="datetime-local" name="expires_at"></label>
+    <label class="check"><input type="checkbox" name="expiry_estimated" value="1"> Expiry is an estimate</label>
+    <label>Not usable before <input type="datetime-local" name="usable_from"></label>
+    <label>Restriction <input name="restriction" maxlength="120" placeholder="e.g. in-play only, 3+ legs"></label>
     <label>Offer <select name="offer_id"><option value="">None</option>{% for o in offers %}<option value="{{ o.id }}">{{ o.title }}</option>{% endfor %}</select></label>
     <label>Notes <input name="notes"></label>
     <button class="btn primary">Add free bet</button>

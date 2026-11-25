@@ -20,7 +20,7 @@ import urllib.request
 from datetime import timedelta
 from pathlib import Path
 
-from . import exports, issues, metrics, outlook, services, times
+from . import exports, freebet_state, issues, metrics, outlook, services, times
 from .money import fmt
 
 ALERT_SENT_KEY = "telegram_alerts_sent"
@@ -72,10 +72,10 @@ def morning(conn, settings) -> str:
     lines = [f"Matched betting · {now.astimezone(times.UK).strftime('%a %-d %b')}"]
     todo = []
     tomorrow = times.iso(now + timedelta(hours=36))
-    for f in conn.execute("SELECT f.face_value_pence, f.expires_at, a.name FROM free_bets f JOIN accounts a ON "
+    for f in conn.execute("SELECT f.face_value_pence, f.expires_at, f.expiry_estimated, a.name FROM free_bets f JOIN accounts a ON "
                           "a.id = f.account_id WHERE f.status = 'available' AND f.deleted_at IS NULL "
                           "AND f.expires_at IS NOT NULL AND f.expires_at <= ? ORDER BY f.expires_at", (tomorrow,)):
-        todo.append(f"• Use {f['name']} {fmt(f['face_value_pence'])} free bet: expires {times.local(f['expires_at'])}")
+        todo.append(f"• Use {f['name']} {fmt(f['face_value_pence'])} free bet: expires {freebet_state.expiry_text(dict(f))}")
     for i in issues.collect(conn, s):
         if i["key"].startswith("started:"):
             todo.append(f"• Settle {i['title']} (started {i['when']})")
@@ -113,12 +113,13 @@ def alerts(conn, settings) -> list[tuple[str, str]]:
     now = times.now()
     sent = services.get_setting(conn, ALERT_SENT_KEY, {}) or {}
     out = []
-    for f in conn.execute("SELECT f.id, f.face_value_pence, f.expires_at, a.name FROM free_bets f JOIN accounts a ON "
+    for f in conn.execute("SELECT f.id, f.face_value_pence, f.expires_at, f.expiry_estimated, a.name FROM free_bets f JOIN accounts a ON "
                           "a.id = f.account_id WHERE f.status = 'available' AND f.deleted_at IS NULL "
                           "AND f.expires_at IS NOT NULL AND f.expires_at BETWEEN ? AND ?",
                           (times.iso(now), times.iso(now + EXPIRY_ALERT))):
         out.append((f"expiry:{f['id']}", f"⏰ {f['name']} {fmt(f['face_value_pence'])} free bet expires "
-                                         f"{times.relative(f['expires_at'])} ({times.local(f['expires_at'], '%H:%M')}). "
+                                         f"{times.relative(f['expires_at'])} ({'about ' if f['expiry_estimated'] else ''}"
+                                         f"{times.local(f['expires_at'], '%H:%M')}). "
                                          + _url(settings, "/free-bets")))
     for p in conn.execute("SELECT id, event, event_at FROM positions WHERE status = 'open' AND deleted_at IS NULL "
                           "AND event_at IS NOT NULL AND event_at <= ?", (times.iso(now - STARTED_ALERT),)):

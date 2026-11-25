@@ -301,3 +301,32 @@ services.create_transfer(conn, from_id=sm, to_id=hub, amount=5000, capital_type=
     over = call(mcp, token, "record_funding_repayment", from_account="Hub Bank", funding_source="Lender Bank",
                 amount="10", request_id="j-repay-2")
     assert over["status"] == "blocked" and "nothing to repay" in str(over)
+
+
+def test_reward_dates_through_mcp(mcp, bets, token, world):
+    seeded = bets.seed('''
+bf = conn.execute("SELECT id FROM accounts WHERE name = 'Betfred'").fetchone()[0]
+out["offer"] = services.create_offer(conn, title="Weekly club", account_id=bf, offer_type="recurring",
+                                     expires_at="2099-11-29T23:59:00Z",
+                                     terms={"reward_count": 2, "reward_each_pence": 250, "reward_kind": "snr"})
+''')
+    oid = seeded["offer"]
+    e = call(mcp, token, "expect_reward", offer_id=oid, request_id=rid("rd"))
+    er = e["result"]["expected_reward_id"]
+    got = lambda: call(mcp, token, "get_expected_reward", expected_reward_id=er)["data"]
+    assert got()["due"] == "date unknown" and got()["overdue"] is False
+    call(mcp, token, "update_offer", offer_id=oid, credited_by="2099-11-30T19:00", request_id=rid("rd"))
+    assert got()["expected_by"] == "2099-11-30 19:00"
+    assert call(mcp, token, "get_offer", offer_id=oid)["data"]["terms"]["credited_by"] == "2099-11-30 19:00"
+    call(mcp, token, "update_expected_reward", expected_reward_id=er, expected_by="2099-12-01T10:00", request_id=rid("rd"))
+    assert got()["expected_by"] == "2099-12-01 10:00" and got()["due_source"] == "given"
+    again = call(mcp, token, "expect_reward", offer_id=oid, expected_by="2099-12-02T10:00", request_id=rid("rd"))
+    assert again["result"] == {**again["result"], "expected_reward_id": er, "created": False, "date_changed": True}
+    assert got()["expected_by"] == "2099-12-02 10:00"
+    call(mcp, token, "update_expected_reward", expected_reward_id=er, clear_expected_by=True, request_id=rid("rd"))
+    assert got()["expected_by"] == "2099-11-30 19:00"                            # back to the offer's credited-by date
+    call(mcp, token, "update_offer", offer_id=oid, clear_credited_by=True, request_id=rid("rd"))
+    assert got()["due"] == "date unknown"
+    call(mcp, token, "update_offer_progress", offer_id=oid, reward_delay_hours=19, reward_due_from="offer_end",
+         request_id=rid("rd"))
+    assert got()["expected_by"] == "2099-11-30 19:00"

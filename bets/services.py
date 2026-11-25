@@ -1069,7 +1069,7 @@ def position_pnl(conn, position_id: int) -> int:
 
 REWARD_KINDS = ("snr", "sr", "cash")
 TERM_FIELDS = ("qualifying_stake_pence", "min_odds", "reward_count", "reward_each_pence", "reward_kind",
-               "reward_expiry_days", "reward_trigger")
+               "reward_expiry_days", "reward_trigger", "reward_delay_hours", "reward_due_from", "reward_credited_by")
 
 
 def clean_terms(terms: dict) -> dict:
@@ -1088,6 +1088,10 @@ def clean_terms(terms: dict) -> dict:
         raise UserError("Reward type: SNR, SR or cash")
     if "reward_trigger" in t and t["reward_trigger"] not in REWARD_TRIGGERS:
         raise UserError("Reward trigger: " + ", ".join(REWARD_TRIGGERS))
+    if "reward_delay_hours" in t and not 1 <= int(t["reward_delay_hours"]) <= 720:
+        raise UserError("Reward delay: between 1 and 720 hours")
+    if "reward_due_from" in t and t["reward_due_from"] not in ("qualifier", "offer_end"):
+        raise UserError("Reward delay counts from: qualifier or offer_end")
     if t.get("reward_kind") == "cash":
         t["reward_count"] = 1
     return t
@@ -1152,6 +1156,9 @@ def update_offer(conn, offer_id: int, data: dict, note: str = "") -> None:
           {k: before[k] for k in changes}, changes, note)
     if set(changes) - {"title", "requirement", "reward", "notes", "reward_value_pence"}:
         from . import offer_state
+        if offer_state.due_changed(before, changes):        # rewards still waiting follow the offer's reward date
+            offer_state.redue_waiting(conn, offer_id, "the offer's reward date changed" + (f": {note}" if note else ""),
+                                      credited_by=bool(changes.get("reward_credited_by")))
         offer_state.sync(conn, offer_id)
 
 
@@ -1178,8 +1185,19 @@ def delete_offer(conn, offer_id: int, note: str = "") -> None:
     audit(conn, "offer", offer_id, "removed", offer, None, note)
 
 
+RESTRICTION_MAX = 120
+
+
+def _check_free_bet_terms(usable_from: str | None, expires_at: str | None, restriction: str | None) -> None:
+    if usable_from and expires_at and usable_from >= expires_at:
+        raise UserError("Not usable before: that is after the free bet expires")
+    if restriction and len(restriction) > RESTRICTION_MAX:
+        raise UserError(f"Restriction: keep it under {RESTRICTION_MAX} characters (put the rest in the notes)")
+
+
 def create_free_bet(conn, *, account_id: int, face_value: int, kind: str = "snr", offer_id=None,
-                    credited_at=None, expires_at=None, notes: str = "") -> int:
+                    credited_at=None, expires_at=None, notes: str = "", usable_from: str | None = None,
+                    restriction: str = "", expiry_estimated: bool = False) -> int:
     acc = _need(conn, "accounts", int(account_id), "Bookmaker")
     if acc["kind"] == "bank":
         raise UserError("Free bets belong to a bookmaker or exchange")
@@ -1187,14 +1205,19 @@ def create_free_bet(conn, *, account_id: int, face_value: int, kind: str = "snr"
         raise UserError("Free bet value must be more than zero")
     if kind not in ("snr", "sr"):
         raise UserError("Choose SNR or SR")
+    restriction = (restriction or "").strip()
+    _check_free_bet_terms(usable_from, expires_at, restriction)
     now = times.now_iso()
     cur = conn.execute("INSERT INTO free_bets (account_id, offer_id, face_value_pence, kind, credited_at, expires_at, notes, "
-                       "created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                       "usable_from, restriction, expiry_estimated, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                        (acc["id"], int(offer_id) if offer_id else None, face_value, kind, credited_at or now,
-                        expires_at, notes.strip(), now, now))
+                        expires_at, notes.strip(), usable_from or None, restriction,
+                        1 if expiry_estimated and expires_at else 0, now, now))
     fid = cur.lastrowid
+    terms = {k: v for k, v in (("usable_from", usable_from), ("restriction", restriction),
+                               ("expiry_estimated", 1 if expiry_estimated and expires_at else 0)) if v}
     audit(conn, "free_bet", fid, "credited", None, {"account": acc["name"], "face_value_pence": face_value,
-                                                    "kind": kind, "offer_id": offer_id})
+                                                    "kind": kind, "offer_id": offer_id, **terms})
     if offer_id:
         from . import offer_state
         offer_state.sync(conn, int(offer_id), note=f"free bet {fid} credited")
@@ -1209,9 +1232,10 @@ def create_free_bets(conn, *, count: int = 1, **kw) -> list[int]:
 
 
 def receive_reward(conn, offer_id: int, *, at: str | None = None, expires_at: str | None = None,
-                   count: int | None = None, each: int | None = None, kind: str | None = None) -> list[int]:
+                   count: int | None = None, each: int | None = None, kind: str | None = None, **terms) -> list[int]:
     """The offer's reward arrived: create its free bets (or post the cash reward) from the offer's terms,
-    which the caller may override. Returns the new free bet ids (empty for cash)."""
+    which the caller may override; terms: usable_from, restriction, expiry_estimated. Returns the new free bet ids
+    (empty for cash)."""
     from datetime import timedelta
     offer = _need(conn, "offers", offer_id, "Offer")
     if offer["status"] in ("complete", "expired", "abandoned"):
@@ -1233,7 +1257,7 @@ def receive_reward(conn, offer_id: int, *, at: str | None = None, expires_at: st
     if not expires_at and offer["reward_expiry_days"]:
         expires_at = times.iso(times.parse(at) + timedelta(days=int(offer["reward_expiry_days"])))
     return create_free_bets(conn, count=int(count), account_id=offer["account_id"], face_value=int(each), kind=kind,
-                            offer_id=offer_id, credited_at=at, expires_at=expires_at)
+                            offer_id=offer_id, credited_at=at, expires_at=expires_at, **terms)
 
 
 def refresh_offer_progress(conn, offer_id: int | None) -> None:
@@ -1260,8 +1284,19 @@ def update_free_bet(conn, free_bet_id: int, data: dict, note: str = "") -> None:
         if offer["account_id"] and offer["account_id"] != before["account_id"]:
             raise UserError("That offer is from a different bookmaker")
         data = {**data, "offer_id": int(data["offer_id"])}
-    fields = ("face_value_pence", "kind", "expires_at", "status", "notes", "offer_id")
+    data = dict(data)
+    if "restriction" in data:
+        data["restriction"] = (data["restriction"] or "").strip()
+    if "usable_from" in data:
+        data["usable_from"] = data["usable_from"] or None
+    after = {**before, **data}
+    if "expiry_estimated" in data or not after["expires_at"]:        # no expiry, nothing to estimate
+        data["expiry_estimated"] = 1 if after["expiry_estimated"] and after["expires_at"] else 0
+    fields = ("face_value_pence", "kind", "expires_at", "status", "notes", "offer_id", "usable_from", "restriction",
+              "expiry_estimated")
     changes = {k: data[k] for k in fields if k in data and data[k] != before[k]}
+    if {"usable_from", "expires_at", "restriction"} & set(changes):
+        _check_free_bet_terms(after["usable_from"], after["expires_at"], after["restriction"])
     if changes.get("status") and changes["status"] not in ("available", "used", "expired", "void"):
         raise UserError("Unknown free bet status")
     if "face_value_pence" in changes and changes["face_value_pence"] <= 0:

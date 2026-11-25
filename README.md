@@ -31,8 +31,12 @@ or exchange and it never moves money.
 - Splits exchange balances into available cash, money held for open lays, and the total. Lays in the same
   exchange market net off once you say which market each one is in, the way the exchange does it.
 - Follows each offer from sign up to the reward arriving and being used, and warns you before free bets
-  expire. An offer's deadline only shows while there's still something for you to do before it. If you change
-  how long an offer's reward takes to arrive, any reward you're still waiting for moves to the new date.
+  expire. An offer's deadline only shows while there's still something for you to do before it. A reward's due
+  date comes from the offer's terms or a date you give, and is never guessed: without one it says "date unknown"
+  and is never called overdue. Weekly offers can count from the end of the week. If the offer's dates change,
+  any reward you're still waiting for moves too.
+- Free bets can hold a "not usable before" time, a short restriction and an expiry that's only an estimate. The
+  Free bets page shows which are planned and which were placed without a full lay.
 - Free bets on the dashboard sit on a seven-day expiry strip, sized by value, so you can see what runs out first.
 - An Up next list on the dashboard, split into what needs you now and what's just waiting (a bet to settle,
   a reward to arrive).

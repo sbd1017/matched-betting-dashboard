@@ -28,7 +28,7 @@ page is the human-readable summary to paste or point an assistant at.
 
 | Tool | Level | Use it when |
 |---|---|---|
-| `update_free_bet` | safe | expiry, notes, offer, status (available / expired / void), value/type if unlinked |
+| `update_free_bet` | safe | expiry (`expiry_estimated`: a best guess, shown as "about 23:59"), `usable_from` (not usable before), `restriction` (short, e.g. "in-play only, 3+ legs"), notes, offer, status (available / expired / void), value/type if unlinked |
 | `link_free_bet_to_position` | safe (swap) / financial (cash bet) | a free bet used on a position isn't linked, or a duplicate token is |
 | `merge_duplicate_free_bets` | safe | two records of one real free bet: keep one, move the link, void the other |
 | `unlink_free_bet_from_position` | financial | a bet that did NOT use a free bet was linked to one |
@@ -71,10 +71,10 @@ actions answer "What should I do now?".
 | `convert_bet_plan_to_position` | safe | placed exactly as planned (`confirmed_placed_as_planned`) |
 | `record_funding_transfer` | safe | money moved for a plan's liability (temporary or permanent), linked to the plan |
 | `settle_position` (`outcome_bucket`, `unusual`) | safe / financial | settle by the outcome that happened; unusual results wait for the user |
-| `expect_reward`, `reconcile_rewards`, `mark_reward_received`, `list_expected_rewards` | planning / safe / read | expected rewards (never profit) and their arrival |
+| `expect_reward`, `reconcile_rewards`, `mark_reward_received`, `list_expected_rewards` | planning / safe / read | expected rewards (never profit) and their arrival; `expect_reward` again with a new `expected_by` updates the date |
 | `unlink_free_bet_from_reward` | safe | undo a wrong match: the free bet stays as it is and loses only the reward link (and the offer link the match filled in); the reward goes back to waiting if short |
-| `update_expected_reward` | safe | correct an expected reward's count / value each / type when its snapshot is wrong (e.g. offer terms corrected later); never creates, deletes or relinks free bets |
-| `update_offer_progress` | safe | opt-in, deposit, structured terms, required sport/market/legs, reward delay |
+| `update_expected_reward` | safe | correct an expected reward's due date (`expected_by`, `clear_expected_by`), or its count / value each / type when its snapshot is wrong (e.g. offer terms corrected later); never creates, deletes or relinks free bets |
+| `update_offer_progress` | safe | opt-in, deposit, structured terms, required sport/market/legs, reward delay (`reward_delay_hours`, counted from the qualifier or, with `reward_due_from: offer_end`, from the offer's end: weekly offers) |
 | `add_record_evidence`, `list_record_evidence` | planning / read | what a screenshot showed (kind, facts); files upload at /bets/ |
 | `set_position_outcomes` | safe | give an existing multi-lay position its outcome model |
 | `set_lay_market` | safe | which exchange market open lays are in: lays on different selections net off in available cash, across positions, as the exchange does |
@@ -97,9 +97,9 @@ cannot approve a change waiting for the user, and never moves money.
 | transfer (`submit_transfer_candidate`) | moved their own money | temporary or permanent; for temporary funding an optional `return_by` reminder; `in_transit` for a withdrawal not yet arrived |
 | transfer: profit withdrawal (`funding_type: profit_withdrawal`) **new in the plugin** | explicitly takes **winnings** out to the bank | which accounts; only when they say winnings/profit |
 | arrival (`submit_arrival_candidate`) **new** | says a withdrawal reached the bank | amount and an account, or the transfer number |
-| offer (`submit_offer_candidate`) | wants a promotion tracked | the terms as fields: `qualifying_stake`, `min_odds`, `reward_count`, `reward_each`, `reward_type` (snr/sr/cash), `reward_expiry_days` |
+| offer (`submit_offer_candidate`) | wants a promotion tracked | the terms as fields: `qualifying_stake`, `min_odds`, `reward_count`, `reward_each`, `reward_type` (snr/sr/cash), `reward_expiry_days`, and when it is credited if the terms say (`credited_by`, or `reward_delay_hours` + `reward_due_from`) |
 | reward (`submit_reward_candidate`) **new** | says an offer's reward arrived | the offer's title; expiry if the offer's terms don't say |
-| free_bet (`submit_free_bet_candidate`) | got free bets not tied to a tracked offer | value, SNR/SR, expiry, **`count`** (e.g. 3 for 3 × £10) |
+| free_bet (`submit_free_bet_candidate`) | got free bets not tied to a tracked offer | value, SNR/SR, expiry (`expiry_estimated` if it is a guess), `usable_from`, `restriction`, **`count`** (e.g. 3 for 3 × £10) |
 | position (`submit_position_candidate`) | placed bets themselves | event, bookmaker, back stake/odds, exchange and lay odds (no lay stake) |
 | settlement (`submit_settlement_candidate`) | says how bets settled | the outcome (never guessed) and when |
 | account_status (`submit_account_status_candidate`) **new** | was restricted ("gubbed"), closed, is fine again, or got verified | which account |
@@ -134,7 +134,7 @@ end. If several records match, the result says so: ask the user for the number i
 
 amend can change: a position's event / selection / market / start / offer; a bet's stake / odds /
 commission / placed time / reference, or move it to another position (`move_to`: number, event or "new");
-an offer's title / status / expiry / requirement / reward; a free bet's expiry / status / offer; a
+an offer's title / status / expiry / requirement / reward; a free bet's expiry / `expiry_estimated` / `usable_from` / `restriction` / status / offer; a
 transfer's date (`at`) or return date (`return_by`); an account's name.
 
 reverse can: void a transfer, reverse a manual ledger entry (number only), remove a bet or a whole position,

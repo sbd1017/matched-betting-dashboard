@@ -209,13 +209,17 @@ def register(server, upstream, limits, settings) -> dict:
     @tool("list_free_bets", "Find free bets", READ)
     async def list_free_bets(status: Literal["available", "used", "expired", "void"] | None = None,
                              bookmaker: Annotated[str, Field(max_length=60)] = "", limit: Limit = 50) -> CallToolResult:
-        """Use this to find free bets (tokens) with their status, expiry, offer, notes and the position that used
-        them. A 'used' free bet without a position is an issue to fix."""
+        """Use this to find free bets (tokens) with their status, expiry (expiry_estimated: the time is a best guess),
+        usable_from, restriction, offer, notes and the position that used them. `placement` says what has happened to
+        each, worked out from its plan, bet and lays: not_placed, planned, placed (lay fully matched), uncovered (lay
+        missing or part matched), check or missed. A 'used' free bet without a position is an issue to fix."""
         return await read("list_free_bets", "free_bets", {"status": status, "account": bookmaker, "limit": limit})
 
     @tool("get_free_bet", "One free bet", READ)
     async def get_free_bet(free_bet_id: RecordNo) -> CallToolResult:
-        """Use this for one free bet: value, type, status, expiry, offer, notes and linked position/bet."""
+        """Use this for one free bet: value, type, status, expiry (and whether it is estimated), usable_from,
+        restriction, offer, notes, linked position/bet, and `placement` (not_placed / planned / placed / uncovered /
+        check / missed, worked out from its plan, bet and lays)."""
         return await read("get_free_bet", "free_bet", {"id": free_bet_id})
 
     @tool("list_transfers", "Find transfers (capital movements)", READ)
@@ -290,6 +294,14 @@ def register(server, upstream, limits, settings) -> dict:
     @tool("update_free_bet", "Correct a free bet's details", EDIT)
     async def update_free_bet(free_bet_id: RecordNo, request_id: ChangeId,
                               expires_at: WhenUK = "", clear_expiry: bool = False,
+                              expiry_estimated: Annotated[bool | None, Field(description="true: the expiry is a best guess "
+                                                                             "(shown as \"about 23:59\"); false: exact")] = None,
+                              usable_from: Annotated[str, Field(max_length=25, description="Not usable before: UK local "
+                                                                                           "YYYY-MM-DDTHH:MM")] = "",
+                              clear_usable_from: bool = False,
+                              restriction: Annotated[str, Field(max_length=120, description="Replace the short restriction, "
+                                                                "e.g. in-play only, 3+ legs")] = "",
+                              clear_restriction: bool = False,
                               notes: Annotated[str | None, Field(max_length=2000, description="Replace the notes")] = None,
                               append_note: Annotated[str, Field(max_length=1000)] = "",
                               offer_id: Annotated[int | None, Field(ge=1)] = None, clear_offer: bool = False,
@@ -297,11 +309,14 @@ def register(server, upstream, limits, settings) -> dict:
                               value: Annotated[str, Field(max_length=20)] = "",
                               type: Literal["snr", "sr"] | None = None,
                               reason: Reason = "", dry_run: DryRun = False) -> CallToolResult:
-        """Use this to correct a free bet's expiry, notes, offer, status (available / expired / void) or, if it is not
+        """Use this to correct a free bet's expiry (and whether it is an estimate: say expiry_estimated=false when the
+        bookmaker shows the exact time), when it becomes usable, its restriction, notes, offer, status (available / expired / void) or, if it is not
         linked to a bet, its value or type. Safe edit. To mark one used, link it to the bet instead
         (link_free_bet_to_position)."""
         return await change("update_free_bet", "update_free_bet", {
-            "free_bet_id": free_bet_id, "expires_at": expires_at, "clear_expiry": clear_expiry, "notes": notes,
+            "free_bet_id": free_bet_id, "expires_at": expires_at, "clear_expiry": clear_expiry,
+            "expiry_estimated": expiry_estimated, "usable_from": usable_from, "clear_usable_from": clear_usable_from,
+            "restriction": restriction, "clear_restriction": clear_restriction, "notes": notes,
             "append_note": append_note, "offer_id": offer_id, "clear_offer": clear_offer, "status": status,
             "value": value, "type": type}, reason, dry_run, request_id)
 
@@ -513,11 +528,16 @@ def register(server, upstream, limits, settings) -> dict:
                            expires_at: WhenUK = "", requirement: Annotated[str | None, Field(max_length=300)] = None,
                            reward: Annotated[str | None, Field(max_length=300)] = None,
                            notes: Annotated[str | None, Field(max_length=2000)] = None,
+                           credited_by: Annotated[str, Field(max_length=25, description="When the bookmaker credits the "
+                                                             "reward by: UK local YYYY-MM-DDTHH:MM (empty = no change)")] = "",
+                           clear_credited_by: Annotated[bool, Field(description="Forget the credited-by date")] = False,
                            reason: Reason = "", dry_run: DryRun = False) -> CallToolResult:
-        """Use this to correct an offer's title, status, expiry, requirement, reward or notes. Safe edit."""
+        """Use this to correct an offer's title, status, expiry, requirement, reward, notes or the date its reward is
+        credited by (its rewards still waiting move to that date). Never guess a date. Safe edit."""
         return await change("update_offer", "update_offer", {
             "offer_id": offer_id, "title": title, "status": status, "expires_at": expires_at,
-            "requirement": requirement, "reward": reward, "notes": notes}, reason, dry_run, request_id)
+            "requirement": requirement, "reward": reward, "notes": notes, "credited_by": credited_by,
+            "clear_credited_by": clear_credited_by}, reason, dry_run, request_id)
 
     @tool("void_offer", "Close an offer as abandoned", EDIT)
     async def void_offer(offer_id: RecordNo, request_id: ChangeId, reason: Reason = "",

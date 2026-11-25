@@ -352,17 +352,31 @@ def op_add_record_evidence(conn, p: dict) -> Plan:
 def op_expect_reward(conn, p: dict) -> Plan:
     plan = Plan("expect_reward", "planning", "Expect a reward" + (f" for offer #{p.get('offer_id')}" if p.get("offer_id") else ""),
                 effects=["an expectation only: not money, not profit, not a free bet until it arrives"])
+    when = _when(p, "expected_by")
+
+    def what(c) -> dict:
+        return {"offer_id": p.get("offer_id"), "account_id": _account_id(c, p.get("bookmaker")), "kind": p.get("reward_type"),
+                "count": p.get("count"), "each": plans._pence(p["each"], "each") if p.get("each") else None,
+                "source_position_id": _int(p, "position_id", required=False)}
+    _, existing = rewards.find_expected(conn, **what(conn))
+    if existing:
+        plan.touches.append(("expected_reward", existing["id"]))
+        plan.summary = f"Expected reward #{existing['id']} is already recorded"
+        moved = bool(when) and (when, "given") != (existing["expected_by"], existing["due_source"])
+        plan.effects.append(f"expected reward #{existing['id']} is {times.due_text(when)} instead of "
+                            f"{times.due_text(existing['expected_by'])}" if moved else "its due date stays: "
+                            + times.due_text(existing["expected_by"]))
 
     def apply(c):
-        rid, created = rewards.expect(c, offer_id=p.get("offer_id"), account_id=_account_id(c, p.get("bookmaker")),
-                                      kind=p.get("reward_type"), count=p.get("count"),
-                                      each=plans._pence(p["each"], "each") if p.get("each") else None,
-                                      expected_by=_when(p, "expected_by"), expiry_days=p.get("expiry_days"),
-                                      source_position_id=_int(p, "position_id", required=False), notes=_str(p, "notes", 500) or "")
-        plan.created.append(("expected_reward", rid))
+        rid, created = rewards.expect(c, **what(c), expected_by=when, expiry_days=p.get("expiry_days"),
+                                      notes=_str(p, "notes", 500) or "")
+        if created:
+            plan.created.append(("expected_reward", rid))
         if p.get("offer_id"):
             offer_state.sync(c, int(p["offer_id"]))
-        return {"expected_reward_id": rid, "created": created}
+        r = services.row(c, "expected_rewards", rid)
+        return {"expected_reward_id": rid, "created": created, "due": times.due_text(r["expected_by"]),
+                "date_changed": bool(existing) and r["expected_by"] != existing["expected_by"]}
     plan.apply = apply
     return plan
 
@@ -403,7 +417,9 @@ def op_mark_reward_received(conn, p: dict) -> Plan:
     def apply(c):
         out = rewards.mark_received(c, rid, free_bet_ids=[int(x) for x in p.get("free_bet_ids") or []],
                                     count=int(p["count"]) if p.get("count") else None, expires_at=_when(p, "expires_at"),
-                                    at=_when(p, "received_at"), notes=_str(p, "notes", 500) or "")
+                                    at=_when(p, "received_at"), notes=_str(p, "notes", 500) or "",
+                                    usable_from=_when(p, "usable_from"), restriction=_str(p, "restriction", 200) or "",
+                                    expiry_estimated=p.get("expiry_estimated") in (True, "true", "1"))
         for fid in out.get("created", []):
             plan.created.append(("free_bet", fid))
         return out
@@ -455,22 +471,33 @@ def op_update_expected_reward(conn, p: dict) -> Plan:
     kind = p.get("reward_type") or r["kind"]
     shape = lambda n, e, k: f"{n} x {fmt(e)} {k.upper()}"
     before, after = (r["count"], r["each_pence"], r["kind"]), (count, each, kind)
-    plan = Plan("update_expected_reward", "safe_edit", f"Expected reward #{rid}: {shape(*before)} -> {shape(*after)}",
-                touches=[("expected_reward", rid)], noop=before == after,
+    o = services.row(conn, "offers", r["offer_id"]) if r["offer_id"] else None
+    due, source = r["expected_by"], r["due_source"]
+    if p.get("expected_by") not in (None, ""):
+        due, source = _when(p, "expected_by"), "given"
+    elif p.get("clear_expected_by"):
+        due = offer_state.due_at(conn, o) if o else None
+        source = "offer" if due else None
+    redue = (due, source) != (r["expected_by"], r["due_source"])
+    said = ([f"{shape(*before)} -> {shape(*after)}"] if before != after or not redue else []) + (
+        [f"{times.due_text(r['expected_by'])} -> {times.due_text(due)}"] if redue else [])
+    plan = Plan("update_expected_reward", "safe_edit", f"Expected reward #{rid}: {', '.join(said)}",
+                touches=[("expected_reward", rid)], noop=before == after and not redue,
                 effects=["corrects the expectation only: no free bet is created, deleted or relinked",
-                         "the offer link, qualifier, dates and history stay; never money or profit"])
+                         "the offer link, qualifier and history stay; never money or profit"])
     plan.blocked = rewards.correction_problem(conn, r, count, each, kind)
     if count * each != r["count"] * r["each_pence"]:
         plan.warnings.append(f"the total changes from {fmt(r['count'] * r['each_pence'])} to {fmt(count * each)}")
     tokens = [t for t in rewards.linked_tokens(conn, rid) if t["status"] != "void"]
     if tokens and (len(tokens) > count or any(t["face_value_pence"] != each for t in tokens)):
         plan.warnings.append(f"the {len(tokens)} linked free bet(s) still won't match {shape(*after)}")
-    o = services.row(conn, "offers", r["offer_id"]) if r["offer_id"] else None
     if o and o["reward_each_pence"] and o["reward_kind"] and (o["reward_count"] or 1, o["reward_each_pence"],
                                                               o["reward_kind"]) != after:
         plan.warnings.append(f"offer #{o['id']}'s terms say "
                              f"{shape(o['reward_count'] or 1, o['reward_each_pence'], o['reward_kind'])}")
-    plan.apply = lambda c: rewards.update_expected_reward(c, rid, count=count, each=each, kind=kind, note=_reason(p) or "")
+    plan.apply = lambda c: rewards.update_expected_reward(
+        c, rid, count=count, each=each, kind=kind, expected_by=_when(p, "expected_by"),
+        clear_expected_by=bool(p.get("clear_expected_by")), note=_reason(p) or "")
     return plan
 
 
@@ -495,16 +522,15 @@ def op_update_offer_progress(conn, p: dict) -> Plan:
     for key in ("required_sport", "required_market"):
         if p.get(key) is not None:
             data[key] = _str(p, key, 80) or None
-    for key in ("min_legs", "reward_delay_hours"):
-        if p.get(key) not in (None, ""):
-            data[key] = int(p[key])
+    if p.get("min_legs") not in (None, ""):
+        data["min_legs"] = int(p["min_legs"])
     terms = {}
     for key, col in (("qualifying_stake", "qualifying_stake_pence"), ("reward_each", "reward_each_pence")):
         if p.get(key) not in (None, ""):
             terms[col] = plans._pence(p[key], key)
     if p.get("min_odds") not in (None, ""):
         terms["min_odds"] = plans._odds(p["min_odds"], "min_odds")
-    for key in ("reward_count", "reward_expiry_days"):
+    for key in ("reward_count", "reward_expiry_days", "reward_delay_hours"):
         if p.get(key) not in (None, ""):
             terms[key] = int(p[key])
     if p.get("reward_type"):
@@ -513,17 +539,20 @@ def op_update_offer_progress(conn, p: dict) -> Plan:
         if p["reward_trigger"] not in services.REWARD_TRIGGERS:
             raise UserError("reward_trigger: " + ", ".join(services.REWARD_TRIGGERS))
         terms["reward_trigger"] = p["reward_trigger"]
+    if p.get("reward_due_from"):
+        if p["reward_due_from"] not in offer_state.DUE_FROM:
+            raise UserError("reward_due_from: " + ", ".join(offer_state.DUE_FROM))
+        if not (p["reward_due_from"] == "qualifier" and o["reward_due_from"] is None):      # the default, unset
+            terms["reward_due_from"] = p["reward_due_from"]
     changed = {k: v for k, v in {**data, **terms}.items() if o.get(k) != v}
     plan = Plan("update_offer_progress", "safe_edit", f"Offer #{oid} ({o['title']}): " +
                 (", ".join(k.replace("_at", "").replace("_pence", "").replace("_", " ") for k in changed) or "no change"),
                 touches=[("offer", oid)], noop=not changed)
-    # a new delay (or trigger) also moves the due time of the offer's rewards still waiting
-    redue = "reward_delay_hours" in changed or "reward_trigger" in changed
-    if redue:
-        for rid, old, new in offer_state.waiting_redue(conn, {**o, **changed}):
+    # a new delay (what it counts from, or the trigger) also moves the due time of the offer's rewards still waiting
+    if offer_state.due_changed(o, changed):
+        for rid, text in offer_state.redue_effects(conn, {**o, **changed}):
             plan.touches.append(("expected_reward", rid))
-            plan.effects.append(f"expected reward #{rid} (still waiting) is due {times.local(new)} instead of "
-                                f"{times.local(old) if old else 'no set time'}")
+            plan.effects.append(text)
 
     def apply(c):
         if terms:
@@ -533,8 +562,6 @@ def op_update_offer_progress(conn, p: dict) -> Plan:
             c.execute("UPDATE offers SET " + ", ".join(f"{k} = ?" for k in facts) + ", updated_at = ? WHERE id = ?",
                       (*facts.values(), now, oid))
             services.audit(c, "offer", oid, "progress", {k: o[k] for k in facts}, facts, _reason(p))
-        if redue:
-            offer_state.redue_waiting(c, oid, note=_reason(p) or "the offer's reward delay changed")
         return offer_state.sync(c, oid) or rewards.lifecycle(c, services.row(c, "offers", oid))
     plan.apply = apply
     return plan

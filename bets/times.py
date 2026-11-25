@@ -72,6 +72,11 @@ def local(value: str | None, fmt: str = "%a %-d %b %H:%M") -> str:
     return dt.astimezone(UK).strftime(fmt) if dt else "—"
 
 
+def due_text(value: str | None) -> str:
+    """'due Mon 30 Nov 19:00', or 'date unknown' when there is no date."""
+    return f"due {local(value)}" if value else "date unknown"
+
+
 def relative(value: str | None) -> str:
     """'in 3 h', '2 d ago' for deadlines."""
     dt = parse(value)

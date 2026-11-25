@@ -11,7 +11,7 @@ what it is, so nothing has to be inferred from one ambiguous "balance":
 """
 from __future__ import annotations
 
-from . import exposure, changes, commission, issues, metrics, outlook, services, times
+from . import exposure, changes, commission, freebet_state, issues, metrics, outlook, services, times
 from .calc import lay_liability
 from .money import commission_text, plain
 
@@ -210,6 +210,8 @@ def free_bet(conn, fid: int) -> dict:
                         (fid,)).fetchone()
     out = {"id": f["id"], "bookmaker": _name(conn, f["account_id"]), "value": m(f["face_value_pence"]), "type": f["kind"],
            "status": f["status"], "expires_at": t(f["expires_at"]), "credited_at": t(f["credited_at"]),
+           "expiry_estimated": bool(f["expiry_estimated"]), "usable_from": t(f["usable_from"]),
+           "restriction": f["restriction"] or None, "placement": freebet_state.view(conn, f),
            "offer": _offer_ref(conn, f["offer_id"]), "notes": f["notes"] or None,
            "position": {"id": link["position_id"], "event": link["event"], "leg_id": link["id"],
                         "position_status": link["status"]} if link else None}
@@ -338,7 +340,8 @@ def offer(conn, oid: int) -> dict:
                      "opt_in_required": bool(o["opt_in_required"]), "opted_in": bool(o["opted_in_at"]),
                      "deposit_required": bool(o["deposit_required"]), "deposit_done": bool(o["deposit_done_at"]),
                      "required_sport": o["required_sport"], "required_market": o["required_market"],
-                     "min_builder_selections": o["min_legs"], "reward_delay_hours": o["reward_delay_hours"]},
+                     "min_builder_selections": o["min_legs"], "reward_delay_hours": o["reward_delay_hours"],
+                     "reward_due_from": o["reward_due_from"] or "qualifier", "credited_by": t(o["reward_credited_by"])},
            "status": life["status"], "expires_at": t(o["expires_at"]), "requirement": o["requirement"] or None,
            "reward": o["reward"] or services.reward_text(o) or None, "reward_received": life["reward_received"],
            "positions": deps["positions"], "free_bets": deps["free_bets"],

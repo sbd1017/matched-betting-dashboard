@@ -138,6 +138,16 @@ def op_update_free_bet(conn, p: dict) -> Plan:
         data["expires_at"] = _when(p, "expires_at")
     if p.get("clear_expiry"):
         data["expires_at"] = None
+    if p.get("expiry_estimated") not in (None, ""):
+        data["expiry_estimated"] = 1 if p["expiry_estimated"] in (True, 1, "true", "1") else 0
+    if p.get("usable_from") not in (None, ""):
+        data["usable_from"] = _when(p, "usable_from")
+    if p.get("clear_usable_from"):
+        data["usable_from"] = None
+    if p.get("restriction") not in (None, ""):
+        data["restriction"] = _str(p, "restriction", 500)
+    if p.get("clear_restriction"):
+        data["restriction"] = ""
     if p.get("notes") is not None:
         data["notes"] = _str(p, "notes", 2000)
     if p.get("append_note"):
@@ -305,6 +315,12 @@ def op_merge_duplicate_free_bets(conn, p: dict) -> Plan:
         fill["expires_at"] = dup["expires_at"]
     if not keep["offer_id"] and dup["offer_id"]:
         fill["offer_id"] = dup["offer_id"]
+    if not keep["usable_from"] and dup["usable_from"]:
+        fill["usable_from"] = dup["usable_from"]
+    if not keep["restriction"] and dup["restriction"]:
+        fill["restriction"] = dup["restriction"]
+    if "expires_at" in fill and dup["expiry_estimated"]:
+        fill["expiry_estimated"] = 1
     if dup["notes"] and dup["notes"] not in (keep["notes"] or ""):
         fill["notes"] = ((keep["notes"] + " · ") if keep["notes"] else "") + dup["notes"]
     effects = [f"#{dup_id} becomes void (kept in the history)"]
@@ -718,8 +734,17 @@ def op_update_offer(conn, p: dict) -> Plan:
         data["status"] = p["status"]
     if p.get("expires_at") not in (None, ""):
         data["expires_at"] = _when(p, "expires_at")
+    if p.get("credited_by") not in (None, ""):
+        data["reward_credited_by"] = _when(p, "credited_by")
+    elif p.get("clear_credited_by"):
+        data["reward_credited_by"] = None
     changed = {k: v for k, v in data.items() if o.get(k) != v}
     plan = Plan("update_offer", "safe_edit", f"Update offer #{oid} ({o['title']})", touches=[("offer", oid)], noop=not changed)
+    from . import offer_state
+    if offer_state.due_changed(o, changed):
+        for rid, text in offer_state.redue_effects(conn, {**o, **changed}, credited_by=bool(changed.get("reward_credited_by"))):
+            plan.touches.append(("expected_reward", rid))
+            plan.effects.append(text)
     plan.apply = lambda c: services.update_offer(c, oid, changed, note=_reason(p) or "correction")
     return plan
 

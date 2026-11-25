@@ -325,6 +325,11 @@ TYPES = {
                    f("reward_expiry_days", "integer", "Free bets expire this many days after they arrive"),
                    f("reward_trigger", "string", "What makes the reward due (default bet_settled)", False,
                      ("bet_placed", "bet_fully_matched", "bet_settled", "bet_lost", "other")),
+                   f("credited_by", "datetime", "When the terms say the reward is credited by. Leave out if they don't "
+                     "say: the date is then unknown, never guessed. " + WHEN),
+                   f("reward_delay_hours", "integer", "How long after the qualifier (or the offer's end) the reward is due"),
+                   f("reward_due_from", "string", "What reward_delay_hours counts from: the qualifier (default), or the "
+                     "offer's end for a weekly offer that pays after the week ends", False, ("qualifier", "offer_end")),
                    f("starts_at", "datetime", WHEN), f("expires_at", "datetime", WHEN),
                    f("notes", "string", "Optional notes")]},
     "arrival": {
@@ -365,6 +370,9 @@ TYPES = {
                    f("status", "string", "Offer: not_started, qualifying, awaiting_reward, reward_received, converting, "
                      "complete, expired, abandoned. Free bet: available, used, expired, void"),
                    f("expires_at", "datetime", "Offer / free bet: new expiry. " + WHEN),
+                   f("usable_from", "datetime", "Free bet: not usable before. " + WHEN),
+                   f("restriction", "string", "Free bet: short restriction, e.g. \"in-play only, 3+ legs\""),
+                   f("expiry_estimated", "boolean", "Free bet: true if its expiry is a best guess, false if it is exact"),
                    f("title", "string", "Offer: new title"), f("requirement", "string", "Offer: new requirement"),
                    f("reward", "string", "Offer: new reward text"),
                    f("at", "datetime", "Transfer: when it really happened. " + WHEN),
@@ -392,6 +400,9 @@ TYPES = {
                    f("count", "integer", "Only if different from the offer's terms: how many free bets"),
                    f("each", "money", "Only if different from the offer's terms: value of each (" + MONEY + ")"),
                    f("reward_type", "string", "Only if different from the offer's terms", False, ("snr", "sr", "cash")),
+                   f("usable_from", "datetime", "Not usable before this time, if the bookmaker says so. " + WHEN),
+                   f("restriction", "string", "Short restriction, e.g. \"in-play only, 3+ legs\" (at most 120 characters)"),
+                   f("expiry_estimated", "boolean", "true if expires_at is a best guess, not a time the bookmaker showed"),
                    f("notes", "string", "Optional notes")]},
     "free_bet": {
         "description": "A free bet token credited by a bookmaker. Free bets are not cash: nothing changes in the "
@@ -401,6 +412,9 @@ TYPES = {
                    f("free_bet_type", "string", "snr = stake not returned (usual), sr = stake returned", False, ("snr", "sr")),
                    f("count", "integer", "How many identical free bets arrived (default 1, at most 20), e.g. 3 for 3 x £10"),
                    f("expires_at", "datetime", WHEN),
+                   f("usable_from", "datetime", "Not usable before this time, if the bookmaker says so. " + WHEN),
+                   f("restriction", "string", "Short restriction, e.g. \"in-play only, 3+ legs\" (at most 120 characters)"),
+                   f("expiry_estimated", "boolean", "true if expires_at is a best guess, not a time the bookmaker showed"),
                    f("offer", "string", "Title of the offer it came from, if any"),
                    f("notes", "string", "Optional notes")]},
     "position": {

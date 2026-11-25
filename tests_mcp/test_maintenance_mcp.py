@@ -222,3 +222,20 @@ out["tid"] = services.create_transfer(conn, from_id=fd, to_id=coral, amount=1500
                                                          "request_id": rid("tr"), "reason": "it was permanent"}))
     assert r["status"] == "applied" and r["totals"]["temporary_funding_outstanding"]["after"] == "0.00"
     assert dash(mcp, token)["realised_profit"] == profit
+
+def test_free_bet_terms_through_mcp(mcp, bets, token, world):
+    made = ok(call_tool(mcp, token, "submit_free_bet_candidate", {
+        "bookmaker": "Betfred", "value": "3.00", "free_bet_type": "snr", "expires_at": "2099-11-25T23:59",
+        "usable_from": "2099-11-25T18:00", "restriction": "in-play only, 3+ legs", "expiry_estimated": True, "dry_run": True}))
+    assert "in-play only, 3+ legs" in str(made) and made["status"] in ("preview", "valid", "dry_run", "ok"), made
+    fb = world["bb5"]
+    ok(call_tool(mcp, token, "update_free_bet", {"free_bet_id": fb, "request_id": rid("terms"), "restriction": "in-play only, 3+ legs",
+                                                 "expiry_estimated": True, "reason": "seen in the wallet"}))
+    got = ok(call_tool(mcp, token, "get_free_bet", {"free_bet_id": fb}))["data"]
+    assert got["restriction"] == "in-play only, 3+ legs" and got["expiry_estimated"] is True
+    assert got["placement"]["status"] == "not_placed"
+    listed = str(ok(call_tool(mcp, token, "list_free_bets", {"status": "available", "bookmaker": "Betfred"})))
+    assert "in-play only, 3+ legs" in listed and "placement" in listed
+    ok(call_tool(mcp, token, "update_free_bet", {"free_bet_id": fb, "request_id": rid("terms"), "clear_restriction": True,
+                                                 "expiry_estimated": False, "reason": "exact time seen"}))
+    assert "in-play only" not in str(ok(call_tool(mcp, token, "get_free_bet", {"free_bet_id": fb})))

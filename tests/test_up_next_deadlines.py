@@ -96,7 +96,7 @@ def test_reward_expected_is_waiting_not_needs_you(app, lad, browser):
         assert offer_deadlines(conn) == []
     groups = up_next(browser)
     assert TITLE not in groups["Needs you"]
-    assert "<b>Reward</b>" in groups["Waiting"] and TITLE in groups["Waiting"] and "expected by" in groups["Waiting"]
+    assert "<b>Reward</b>" in groups["Waiting"] and TITLE in groups["Waiting"] and "date unknown" in groups["Waiting"]
     assert "It arrived" in groups["Waiting"]                                  # can still be ticked off from there
     assert not any(deadline_row(g) for g in groups.values())
 
@@ -104,6 +104,7 @@ def test_reward_expected_is_waiting_not_needs_you(app, lad, browser):
 # 3b. reward overdue: chasing the bookmaker is a job for the user
 def test_reward_overdue_needs_you(app, lad, browser):
     with app.state.db.tx() as conn:
+        services.update_offer(conn, lad["offer"], {"reward_delay_hours": 24})
         offer_state.mark_qualified(conn, lad["offer"], at=at(-72))            # due 24h later: two days late
         assert stage(conn, lad) == ("reward_overdue", False)
     groups = up_next(browser)

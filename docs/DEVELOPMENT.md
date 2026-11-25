@@ -60,6 +60,10 @@ The app and nginx send `default-src 'self'; script-src 'self'; style-src 'self'`
 - `bets/undo.py`: the Undo button after an action (30 minutes, refused once records changed).
 - `bets/changes.py`: the assistant's `amend` / `reverse` candidates.
 - `bets/digest.py`: Telegram summary and alerts (`scripts/telegram-setup.sh`, deploy/*digest*, *alerts*).
+- `bets/freebet_state.py`: what has happened to each free bet (not placed / planned / placed / uncovered / check /
+  missed), worked out from its token, bet plan, position and lays and never stored; the Free bets page and the
+  `placement` field of the read API. The dashboard does not show it (it has the plain countdown). Terms on the token (migration 0019): `usable_from`, `restriction`,
+  `expiry_estimated` (show expiries with `freebet_state.expiry_text`).
 - `bets/commission.py`: promotional commission rates with an end date (`accounts.commission_expires_at`,
   any exchange): account pages, calendar, dashboard rows at 30 / 7 days, an issue once ended, and a warning
   wherever the stored rate is used. The stored rate is never changed automatically.
@@ -76,6 +80,10 @@ The app and nginx send `default-src 'self'; script-src 'self'; style-src 'self'`
   `issues.dismiss / reopen / sync_dismissals` (fingerprinted, reopen when facts change). MCP tools:
   `bets_mcp/operations.py`; tests: `tests/test_operations.py`, `tests_mcp/test_operations_mcp.py`.
   Pages: /operations, /plans, /plans/<id>, /settings/retention-policy, evidence on plan and position pages.
+- Reward dates (migration 0020): `offer_state.due_at` is the only place a reward's due date is worked out: the offer's
+  `reward_credited_by`, else `reward_delay_hours` from the qualifier or the offer's end (`reward_due_from`), else None
+  ("date unknown", never overdue). Never make one up. `expected_rewards.due_source` says where a date came from; a
+  given one is only moved by a new credited-by date.
 - Offer lifecycle (migration 0015): `bets/offer_state.py` is the ONLY place offer status/stage/next action are worked
   out (`derive`) and written (`sync`, called by every service that can move an offer on, by `ops.execute` and the
   dashboard; `sync_all` / `out_of_step` skip the closed offers `settled_ids` rules out, so a new fact `derive` or

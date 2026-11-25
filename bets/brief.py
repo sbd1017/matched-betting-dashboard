@@ -8,7 +8,7 @@ import json
 from datetime import timedelta
 from decimal import Decimal
 
-from . import (calc, evidence, exposure, issues, metrics, outcomes, outlook, plans, readapi, rewards, services,
+from . import (calc, evidence, exposure, freebet_state, issues, metrics, outcomes, outlook, plans, readapi, rewards, services,
                times)
 from .money import fmt, plain, symbol
 from .readapi import m, t
@@ -274,11 +274,13 @@ def next_actions(conn, s=None) -> list[dict]:
         planned = plans.live_for_free_bet(conn, f["id"])
         pr = "urgent" if f["expires_at"] and f["expires_at"] <= h24 else ("high" if f["expires_at"] and f["expires_at"] <= h72
                                                                           else "low")
-        restriction = (f["notes"] or "")[:80]
+        restriction = f["restriction"] or (f["notes"] or "")[:80]
+        usable = freebet_state.usable_text(dict(f), now) if f["usable_from"] and f["usable_from"] > now else ""
         out.append(_action(pr, "free_bet_expiry", f"{f['name']} {fmt(f['face_value_pence'])} {f['kind'].upper()}"
-                           + (f" expires {times.local(f['expires_at'], '%a %-d %b %H:%M')}" if f["expires_at"] else " (no expiry)"),
+                           + (f" expires {freebet_state.expiry_text(dict(f))}" if f["expires_at"] else " (no expiry)"),
                            f"Estimated worth {fmt(worth)} at {int(rate * 100)}% retention."
                            + (f" Restriction: {restriction}." if restriction else "")
+                           + (f" {usable}." if usable else "")
                            + (f" Plan #{planned} is set up for it." if planned else ""),
                            f"Continue plan #{planned}" if planned else "Find a conversion: create a bet plan for it",
                            deadline=f["expires_at"], records=[f"free_bet #{f['id']}"] + ([f"plan #{planned}"] if planned else []),
@@ -368,10 +370,11 @@ def next_actions(conn, s=None) -> list[dict]:
         life = rewards.lifecycle(conn, dict(o))
         if not life.get("next_action") or life["stage"] in ("reward_credited", "reward_partially_used", "reward_used"):
             continue
-        pr = "high" if life["stage"] == "reward_overdue" or (o["expires_at"] and o["expires_at"] <= h72) else (
+        pr = "high" if life["stage"] == "reward_overdue" or (
+            life["stage"] != "reward_expected" and life.get("deadline") and life["deadline"] <= h72) else (
             "low" if life.get("actor") == "waiting" else "medium")
         out.append(_action(pr, "offer", f"{o['title']}: {life['next_action']}", f"Stage: {life['stage'].replace('_', ' ')}.",
-                           life["next_action"], deadline=life.get("deadline") or o["expires_at"], records=[f"offer #{o['id']}"],
+                           life["next_action"], deadline=life.get("deadline"), records=[f"offer #{o['id']}"],
                            assistant=life.get("actor") in ("assistant", "both"), user=life.get("actor") in ("user", "both")))
     for r in conn.execute("SELECT e.*, a.name FROM expected_rewards e JOIN accounts a ON a.id = e.account_id WHERE e.status "
                           "IN ('waiting', 'partially_received') AND e.offer_id IS NULL"):
@@ -416,7 +419,8 @@ def operating_brief(conn) -> dict:
                           "'available' AND f.deleted_at IS NULL ORDER BY f.expires_at IS NULL, f.expires_at"):
         rate = ret[f["kind"]]["rate"] if f["kind"] in ret else outlook.TYPICAL["snr"]
         free.append({"id": f["id"], "bookmaker": f["name"], "value": m(f["face_value_pence"]), "type": f["kind"],
-                     "expires_at": t(f["expires_at"]), "restriction": f["notes"] or None,
+                     "expires_at": t(f["expires_at"]), "expiry_estimated": bool(f["expiry_estimated"]),
+                     "usable_from": t(f["usable_from"]), "restriction": f["restriction"] or f["notes"] or None,
                      "estimated_worth": m(outlook._value(f["face_value_pence"], rate)),
                      "plan_id": plans.live_for_free_bet(conn, f["id"])})
     offers = []

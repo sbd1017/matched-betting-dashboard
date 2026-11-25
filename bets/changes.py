@@ -27,7 +27,7 @@ AMEND_FIELDS = {
     "position": ("event", "selection", "market", "event_at", "offer"),
     "leg": ("stake", "odds", "commission", "placed_at", "reference", "move_to"),
     "offer": ("title", "status", "expires_at", "requirement", "reward"),
-    "free_bet": ("expires_at", "status", "offer"),
+    "free_bet": ("expires_at", "expiry_estimated", "usable_from", "restriction", "status", "offer"),
     "transfer": ("at", "return_by"),
     "account": ("name",),
 }
@@ -179,7 +179,7 @@ def normalise_amend(conn, raw: dict, source: str):
         if value in (None, ""):
             continue
         try:
-            if name in ("event_at", "placed_at", "expires_at", "at", "return_by"):
+            if name in ("event_at", "placed_at", "expires_at", "at", "return_by", "usable_from"):
                 new = im._time(value, name, errors)
                 key = {"return_by": "due_at"}.get(name, name)
             elif name == "stake":
@@ -198,6 +198,12 @@ def normalise_amend(conn, raw: dict, source: str):
                 if value not in allowed:
                     raise Problem(f"status: one of {', '.join(allowed)}")
                 new, key = value, "status"
+            elif name == "expiry_estimated":
+                new, key = 1 if im._truthy(value) else 0, name
+            elif name == "restriction":
+                new, key = im._text(value, 500), name
+                if len(new) > services.RESTRICTION_MAX:
+                    raise Problem(f"restriction: at most {services.RESTRICTION_MAX} characters")
             elif name == "move_to":
                 if str(value).strip().lower() == "new":
                     new = "new"
@@ -394,8 +400,10 @@ def preview_rows(kind: str, c: dict) -> list[tuple[str, str]]:
             return "—"
         if key.endswith("_pence"):
             return fmt(v)
-        if key in ("event_at", "placed_at", "expires_at", "at", "due_at"):
+        if key in ("event_at", "placed_at", "expires_at", "at", "due_at", "usable_from"):
             return times.local(v)
+        if key == "expiry_estimated":
+            return "estimate" if v else "exact"
         if key == "commission_bp":
             return f"{v / 100:g}%"
         return str(v)
@@ -421,5 +429,7 @@ def to_raw(kind: str, c: dict) -> dict:
                 v = plain(v)
             elif k == "commission_bp":
                 v = f"{v / 100:g}"
+            elif k == "expiry_estimated":
+                v = "true" if v else "false"
             raw[names.get(k, k)] = v
     return raw

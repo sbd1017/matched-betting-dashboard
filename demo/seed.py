@@ -380,7 +380,7 @@ class Demo:
             starts_at=times.now_iso(), expires_at=iso(expires),
             terms={"qualifying_stake_pence": stake, "min_odds": min_odds, "reward_count": count,
                    "reward_each_pence": each, "reward_kind": "snr", "reward_expiry_days": expiry_days,
-                   "reward_trigger": trigger})
+                   "reward_trigger": trigger, "reward_delay_hours": 2 if trigger == "bet_placed" else 24})
 
     def qualify(self, offer_id: int, book: str, scope: str, stake: int, min_odds: str | None, trigger: str,
                 fixtures: list, flags: dict) -> None:

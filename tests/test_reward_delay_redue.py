@@ -25,13 +25,14 @@ def expected(conn, oid):
 
 @pytest.fixture
 def club(app):
-    """Sky Bet Club: reward due once the qualifier is done (bet_placed), confirmed done 20 hours ago, so the
-    reward was expected at qualifier + 2 hours and is now overdue."""
+    """Sky Bet Club: reward due once the qualifier is done (bet_placed), confirmed done 20 hours ago, and its delay
+    was recorded as 2 hours, so the reward is now overdue."""
     with app.state.db.tx() as conn:
         acc = services.create_account(conn, name="Sky Bet", kind="bookmaker")
         oid = services.create_offer(conn, title="Sky Bet Club", account_id=acc,
                                     terms={"reward_count": 2, "reward_each_pence": 250, "reward_kind": "snr",
-                                           "reward_trigger": "bet_placed", "reward_expiry_days": 7})
+                                           "reward_trigger": "bet_placed", "reward_expiry_days": 7,
+                                           "reward_delay_hours": 2})
     return oid
 
 
@@ -46,7 +47,7 @@ def test_a_new_delay_moves_a_waiting_reward_and_it_is_no_longer_overdue(app, api
     with app.state.db.read() as conn:
         e0 = expected(conn, club)
         q = conn.execute("SELECT qualified_at FROM offers WHERE id = ?", (club,)).fetchone()[0]
-    assert e0["status"] == "waiting" and e0["expected_by"] < times.now_iso()   # late under the default delay
+    assert e0["status"] == "waiting" and e0["expected_by"] < times.now_iso()   # late under the 2 hour delay
 
     code, body = change(api, "update_offer_progress", "delay-1", offer_id=club, reward_delay_hours=146, dry_run=True)
     assert code == 200, body

@@ -15,6 +15,10 @@ Reward trigger (offers.reward_trigger): what makes the reward due --
   bet_settled        the qualifier settled (the default, as before)
   bet_lost           the qualifier settled and its back bet lost (money-back offers)
   other              only the bookmaker's confirmation (qualified_at) counts
+
+When the reward is due (due_at) is never guessed: the offer's "credited by" date (reward_credited_by), else its reward
+delay (reward_delay_hours) counted from the qualifier or, for a weekly offer that pays after the week ends
+(reward_due_from = 'offer_end'), from the offer's end. With neither, the date is unknown and nothing is overdue.
 """
 from __future__ import annotations
 
@@ -25,8 +29,7 @@ from . import services, times
 TRIGGERS = ("bet_placed", "bet_fully_matched", "bet_settled", "bet_lost", "other")
 DEFAULT_TRIGGER = "bet_settled"
 CLOSED_BY_HAND = ("expired", "abandoned")
-DELAY_HOURS = {"bet_placed": 2}            # how soon a reward is due after its trigger, unless the offer says
-DEFAULT_DELAY_HOURS = 24
+DUE_FROM = ("qualifier", "offer_end")      # what an offer's reward delay counts from (offers.reward_due_from)
 TRIGGER_TEXT = {"bet_placed": "the qualifying bet was placed", "bet_fully_matched": "the qualifier was placed and hedged",
                 "bet_settled": "the qualifier settled", "bet_lost": "the qualifier lost",
                 "other": "the bookmaker confirmed it"}
@@ -125,8 +128,9 @@ def derive(conn, offer: dict) -> dict:
         waiting = [e for e in expected if e["status"] in ("waiting", "partially_received")]
         late = [e for e in waiting if e["expected_by"] and e["expected_by"] < now]
         stage = "reward_overdue" if late else "reward_expected"
+        known = [e["expected_by"] for e in (late or waiting) if e["expected_by"]]
         return {**base, "status": "awaiting_reward", "stage": stage, "actor": "user" if late else "both",
-                "deadline": (late or waiting or [{"expected_by": None}])[0]["expected_by"],
+                "deadline": min(known, default=None),
                 "next_action": ("The reward is overdue: check the bookmaker and chase it if it has not arrived" if late else
                                 "Check the bookmaker for the reward; when it shows, record it (reconcile_rewards / "
                                 "mark_reward_received)")}
@@ -160,38 +164,68 @@ def derive(conn, offer: dict) -> dict:
             "next_action": "Plan the qualifying bet"}
 
 
-def due_at(conn, o: dict, state: dict | None = None) -> str:
-    """When the offer's reward is due: the qualifier's time plus the offer's delay (or the trigger's default)."""
+def _after_end(end: str, hours: int) -> str:
+    """`hours` after an offer's end on the UK clock. An end at 23:59 means midnight, so 19 hours later is 19:00."""
+    at = times.parse(end).astimezone(times.UK)
+    if at.minute == 59:
+        at += timedelta(minutes=1)
+    return times.iso(at + timedelta(hours=hours))
+
+
+def due_at(conn, o: dict, state: dict | None = None) -> str | None:
+    """When the offer's reward is due, from its terms. None = not known: a date is never made up."""
+    if o["reward_credited_by"]:
+        return o["reward_credited_by"]
+    delay = o["reward_delay_hours"]
+    if not delay:
+        return None
+    if o["reward_due_from"] == "offer_end":
+        return _after_end(o["expires_at"], int(delay)) if o["expires_at"] else None
     state = state or derive(conn, o)
-    delay = o["reward_delay_hours"] or DELAY_HOURS.get(trigger(o), DEFAULT_DELAY_HOURS)
-    return times.iso(times.parse(state["qualified_at"] or times.now_iso()) + timedelta(hours=delay))
+    return times.iso(times.parse(state["qualified_at"]) + timedelta(hours=int(delay))) if state["qualified_at"] else None
 
 
-def waiting_redue(conn, o: dict) -> list[tuple[int, str | None, str]]:
-    """Expected rewards of the offer still waiting whose due time the offer's current delay would change:
-    [(expected_reward_id, old expected_by, new expected_by)]. Only once the qualifier is done."""
-    state = derive(conn, o)
-    if not state["qualified"]:
-        return []
-    due = due_at(conn, o, state)
-    return [(r["id"], r["expected_by"], due) for r in conn.execute(
-        "SELECT id, expected_by FROM expected_rewards WHERE offer_id = ? AND status IN ('waiting', 'partially_received')",
-        (o["id"],)) if r["expected_by"] != due]
+def due_changed(before: dict, changes: dict) -> bool:
+    """Would these changes to an offer move when its reward is due?"""
+    return bool({"reward_credited_by", "reward_delay_hours", "reward_due_from", "reward_trigger"} & set(changes)
+                or ("expires_at" in changes and {**before, **changes}["reward_due_from"] == "offer_end"))
 
 
-def redue_waiting(conn, offer_id: int, note: str = "") -> list[int]:
-    """The offer's delay (or trigger) changed: move the due time of its rewards still waiting to match. -> ids moved."""
+def waiting_redue(conn, o: dict, *, credited_by: bool = False) -> list[tuple[int, str | None, str | None]]:
+    """Expected rewards of the offer still waiting whose due time the offer's terms would change:
+    [(expected_reward_id, old expected_by, new expected_by)]. A date given for the reward itself stays, unless the
+    offer was just given a credited-by date (credited_by); a date recorded before its source was kept is only ever
+    replaced by a known one."""
+    due = due_at(conn, o)
+    out = []
+    for r in conn.execute("SELECT id, expected_by, due_source FROM expected_rewards WHERE offer_id = ? AND status IN "
+                          "('waiting', 'partially_received')", (o["id"],)):
+        stays = (not (credited_by and due) and r["due_source"] == "given") or (r["due_source"] is None and due is None)
+        if not stays and r["expected_by"] != due:
+            out.append((r["id"], r["expected_by"], due))
+    return out
+
+
+def redue_waiting(conn, offer_id: int, note: str = "", *, credited_by: bool = False) -> list[int]:
+    """The offer's reward dates changed: move the due time of its rewards still waiting to match. -> ids moved."""
     o = services.row(conn, "offers", int(offer_id))
     if not o or o["deleted_at"]:
         return []
     now = times.now_iso()
     moved = []
-    for rid, old, new in waiting_redue(conn, o):
-        conn.execute("UPDATE expected_rewards SET expected_by = ?, updated_at = ? WHERE id = ?", (new, now, rid))
+    for rid, old, new in waiting_redue(conn, o, credited_by=credited_by):
+        conn.execute("UPDATE expected_rewards SET expected_by = ?, due_source = ?, updated_at = ? WHERE id = ?",
+                     (new, "offer" if new else None, now, rid))
         services.audit(conn, "expected_reward", rid, "due", {"expected_by": old}, {"expected_by": new},
-                       note or "the offer's reward delay changed")
+                       note or "the offer's reward date changed")
         moved.append(rid)
     return moved
+
+
+def redue_effects(conn, o: dict, *, credited_by: bool = False) -> list[tuple[int, str]]:
+    """waiting_redue in words, for a change's preview: [(expected_reward_id, text)]."""
+    return [(rid, f"expected reward #{rid} (still waiting) is {times.due_text(new)} instead of {times.due_text(old)}")
+            for rid, old, new in waiting_redue(conn, o, credited_by=credited_by)]
 
 
 def sync(conn, offer_id: int | None, note: str = "") -> dict | None:
@@ -214,7 +248,7 @@ def sync(conn, offer_id: int | None, note: str = "") -> dict | None:
         if arrived and state["status"] != "awaiting_reward":   # after the fact: due when it actually arrived
             due = conn.execute("SELECT min(coalesce(credited_at, created_at)) FROM free_bets WHERE offer_id = ? AND "
                                "deleted_at IS NULL AND status <> 'void'", (o["id"],)).fetchone()[0] or due
-        rewards.expect(conn, offer_id=o["id"], expected_by=due, sync=False,
+        rewards.expect(conn, offer_id=o["id"], expected_by=due, due_source="offer" if due else None, sync=False,
                        source_position_id=(state["qualifier_position_ids"] or [None])[0],
                        notes=f"due because {TRIGGER_TEXT[trigger(o)]}")
     for e in conn.execute("SELECT * FROM expected_rewards WHERE offer_id = ? AND status IN ('waiting', "
